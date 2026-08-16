@@ -1,13 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { getAds } from "./blocket/ad.js";
 import { listFilters } from "./blocket/filters.js";
 import { search } from "./blocket/search.js";
 import { SORTS, VERTICALS } from "./types.js";
 
 export const INSTRUCTIONS = `Read-only access to Blocket.se, Sweden's largest classifieds site, straight from Blocket's own search.
-Workflow: search (pick the vertical; Swedish query words work best).
+Workflow: search (pick the vertical; Swedish query words work best) → get_ad for description, specs, photos, seller and red flags (2-5 ids = side-by-side comparison).
 Filters: common ones are typed params; anything else goes in search.filters as Blocket filter name → plain value label (e.g. {"make": "Volvo", "body_type": "Kombi"} or {"length_feet": {"min": 28}}). list_filters shows names and values with live counts. Values that could not be matched come back in "unmatched" with suggestions and were NOT applied: fix them and search again.
 Units: SEK, car/mc mileage in Swedish mil (1 mil = 10 km), boat length in feet. near takes coordinates you know for the place.
+red_flags are facts to check, not verdicts.
 "What's new since…": search with since (ISO time). For push alerts, give the user blocket_url to save as a search in the Blocket app.
 Always link each ad's url. Keep at most 3 calls in parallel.`;
 
@@ -114,5 +116,19 @@ export function registerTools(server: McpServer) {
       annotations: { title: "List Blocket filters", ...READ_ONLY },
     },
     ({ vertical, filter, query }) => result(() => listFilters(vertical, filter, query)),
+  );
+
+  server.registerTool(
+    "get_ad",
+    {
+      title: "Get Blocket ads",
+      description:
+        "Full details of 1-5 ads by id or blocket.se URL: description, specs, equipment, all photos, place, status (active/sold/removed), seller (dealer, years on Blocket, other ads via seller.id), shipping/buy-now, favourites count, red flags and vehicle history links. Several ids render a comparison.",
+      inputSchema: {
+        ids: z.array(z.string().min(1)).min(1).max(5).describe("Ad ids from search rows, or blocket.se ad URLs."),
+      },
+      annotations: { title: "Get Blocket ads", ...READ_ONLY },
+    },
+    ({ ids }) => result(() => getAds(ids)),
   );
 }
