@@ -2,14 +2,15 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getAds } from "./blocket/ad.js";
 import { listFilters } from "./blocket/filters.js";
+import { priceCheck } from "./blocket/price.js";
 import { search } from "./blocket/search.js";
 import { SORTS, VERTICALS } from "./types.js";
 
 export const INSTRUCTIONS = `Read-only access to Blocket.se, Sweden's largest classifieds site, straight from Blocket's own search.
-Workflow: search (pick the vertical; Swedish query words work best) → get_ad for description, specs, photos, seller and red flags (2-5 ids = side-by-side comparison).
+Workflow: search (pick the vertical; Swedish query words work best) → get_ad for description, specs, photos, seller and red flags (2-5 ids = side-by-side comparison) → price_check to judge an asking price against comparable live ads.
 Filters: common ones are typed params; anything else goes in search.filters as Blocket filter name → plain value label (e.g. {"make": "Volvo", "body_type": "Kombi"} or {"length_feet": {"min": 28}}). list_filters shows names and values with live counts. Values that could not be matched come back in "unmatched" with suggestions and were NOT applied: fix them and search again.
 Units: SEK, car/mc mileage in Swedish mil (1 mil = 10 km), boat length in feet. near takes coordinates you know for the place.
-red_flags are facts to check, not verdicts.
+price_check reports asking prices of live ads, never sold prices. red_flags are facts to check, not verdicts.
 "What's new since…": search with since (ISO time). For push alerts, give the user blocket_url to save as a search in the Blocket app.
 Always link each ad's url. Keep at most 3 calls in parallel.`;
 
@@ -130,5 +131,21 @@ export function registerTools(server: McpServer) {
       annotations: { title: "Get Blocket ads", ...READ_ONLY },
     },
     ({ ids }) => result(() => getAds(ids)),
+  );
+
+  server.registerTool(
+    "price_check",
+    {
+      title: "Check a Blocket price",
+      description:
+        "Asking-price distribution (p10/p25/median/p75/p90) of comparable live ads, with up to 6 example ads. Give ad_id to judge that ad (comparables are derived from its make, model, year, mileage or length; its percentile is returned), or describe the item with the search filters. For Torget items pass a short query (e.g. 'iphone 13 128gb') for good comparables. Explicit filters override the derived ones.",
+      inputSchema: {
+        ad_id: z.string().min(1).optional().describe("Ad id or blocket.se URL to judge."),
+        vertical: vertical.optional(),
+        ...filterParams,
+      },
+      annotations: { title: "Check a Blocket price", ...READ_ONLY },
+    },
+    (args) => result(() => priceCheck(args)),
   );
 }
