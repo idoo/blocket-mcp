@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "blocket-mcp",
   "main": "src/index.ts",
-  "compatibility_date": "2026-07-08",
+  "compatibility_date": "2026-09-01",
   "workers_dev": true,
   // Account-wide cap on MCP calls (the free plan shares 100k requests/day across all Workers).
   "ratelimits": [
