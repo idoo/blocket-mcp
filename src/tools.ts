@@ -5,6 +5,7 @@ import { listFilters } from "./blocket/filters.js";
 import { priceCheck } from "./blocket/price.js";
 import { search } from "./blocket/search.js";
 import { SORTS, VERTICALS } from "./types.js";
+import { WIDGET_TOOL_META } from "./widget/index.js";
 
 export const INSTRUCTIONS = `Read-only access to Blocket.se, Sweden's largest classifieds site, straight from Blocket's own search.
 Workflow: search (pick the vertical; Swedish query words work best) → get_ad for description, specs, photos, seller and red flags (2-5 ids = side-by-side comparison) → price_check to judge an asking price against comparable live ads.
@@ -99,6 +100,7 @@ export function registerTools(server: McpServer) {
         facets: z.boolean().optional().describe("Also return value counts for the main filters (market overview, refining)."),
       },
       annotations: { title: "Search Blocket", ...READ_ONLY },
+      _meta: WIDGET_TOOL_META,
     },
     (args) => result(() => search(args)),
   );
@@ -129,6 +131,7 @@ export function registerTools(server: McpServer) {
         ids: z.array(z.string().min(1)).min(1).max(5).describe("Ad ids from search rows, or blocket.se ad URLs."),
       },
       annotations: { title: "Get Blocket ads", ...READ_ONLY },
+      _meta: WIDGET_TOOL_META,
     },
     ({ ids }) => result(() => getAds(ids)),
   );
@@ -145,6 +148,7 @@ export function registerTools(server: McpServer) {
         ...filterParams,
       },
       annotations: { title: "Check a Blocket price", ...READ_ONLY },
+      _meta: WIDGET_TOOL_META,
     },
     (args) => result(() => priceCheck(args)),
   );

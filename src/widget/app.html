@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blocket</title>
+<style>
+:root {
+  --bg: #ffffff; --surface: #ffffff; --sunken: #f5f5f4; --border: #e7e5e4; --border-strong: #d6d3d1;
+  --text: #1c1917; --muted: #78716c; --faint: #a8a29e;
+  --accent: #e8202a; --accent-soft: #fdecec; --link: #0b63ce;
+  --ok: #15803d; --ok-soft: #e7f6ec; --warn: #b45309; --warn-soft: #fef3e2; --info-soft: #eef2f7;
+  --diff: #fff7d6; --band: #e7e5e4; --band-mid: #a8a29e;
+  --shadow: 0 1px 2px rgba(28,25,23,.06);
+  --radius: 12px;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #1b1b1c; --surface: #242426; --sunken: #2c2c2f; --border: #38383b; --border-strong: #4a4a4e;
+  --text: #f4f4f5; --muted: #a1a1aa; --faint: #71717a;
+  --accent: #ff5a5f; --accent-soft: #3a2224; --link: #6ea8ff;
+  --ok: #4ade80; --ok-soft: #1f3327; --warn: #fbbf24; --warn-soft: #3a2f17; --info-soft: #2a2f38;
+  --diff: #3a3418; --band: #3a3a3e; --band-mid: #71717a;
+  --shadow: none;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a { color: var(--link); text-decoration: none; }
+#app { padding: 14px 14px 16px; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* header */
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -.01em; }
+.brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.head h1 { font-size: 15px; margin: 0; font-weight: 600; }
+.head .total { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.chip { display: inline-flex; gap: 4px; align-items: center; padding: 3px 9px; border-radius: 999px; background: var(--sunken); border: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+.chip b { font-weight: 600; }
+.chip.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+
+/* carousel */
+.rail-wrap { position: relative; }
+.rail { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 2px; padding: 2px 2px 6px; scrollbar-width: none; }
+.rail::-webkit-scrollbar { display: none; }
+.card { flex: 0 0 210px; scroll-snap-align: start; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); cursor: pointer; display: flex; flex-direction: column; transition: border-color .15s; position: relative; }
+.card:hover { border-color: var(--border-strong); }
+.ph { position: relative; aspect-ratio: 4 / 3; background: var(--sunken); overflow: hidden; }
+.ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph .noimg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 12px; }
+.star { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); color: #44403c; font-size: 16px; line-height: 30px; padding: 0; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.star.on { color: #e8a200; }
+.ph .badges { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 16px); }
+.badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.94); color: #1c1917; white-space: nowrap; }
+.badge.hot { background: var(--accent); color: #fff; }
+.badge.ok { background: #15803d; color: #fff; }
+.badge.dim { background: #44403c; color: #fff; }
+.cb { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.price { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.price.none { color: var(--muted); font-weight: 600; font-size: 14px; }
+.title2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; min-height: 2.8em; }
+.meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; }
+.meta span + span::before { content: "·"; margin-right: 6px; color: var(--faint); }
+.specs { display: flex; flex-wrap: nowrap; gap: 4px; margin-top: 3px; overflow: hidden; }
+.spec { flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--sunken); color: var(--muted); }
+.more { flex: 0 0 140px; scroll-snap-align: start; border: 1px dashed var(--border-strong); border-radius: var(--radius); background: transparent; display: grid; place-items: center; color: var(--muted); font-weight: 600; }
+.more:hover { color: var(--text); border-color: var(--muted); }
+.nav { position: absolute; top: calc(50% - 30px); width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 2px 6px rgba(0,0,0,.12); font-size: 18px; line-height: 1; padding: 0; z-index: 2; }
+.nav.l { left: -6px; } .nav.r { right: -6px; }
+.nav[hidden] { display: none; }
+.bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.bar .grow { flex: 1; }
+.btn { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 999px; padding: 6px 13px; font-weight: 600; font-size: 13px; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn.primary:hover { opacity: .9; }
+.btn[disabled] { opacity: .45; cursor: default; }
+.btn.wide { display: block; width: 100%; text-align: center; padding: 10px; border-radius: 10px; }
+.link { font-size: 13px; font-weight: 600; background: none; border: 0; color: var(--link); padding: 0; }
+
+/* skeleton */
+.sk { background: linear-gradient(90deg, var(--sunken) 25%, var(--border) 50%, var(--sunken) 75%); background-size: 200% 100%; animation: sh 1.2s infinite linear; border-radius: 6px; }
+@keyframes sh { to { background-position: -200% 0; } }
+.wait { display: flex; gap: 10px; overflow: hidden; }
+.wait .card { cursor: default; }
+
+/* ad detail */
+.gal { position: relative; border-radius: var(--radius); overflow: hidden; background: var(--sunken); }
+.gal .track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.gal .track::-webkit-scrollbar { display: none; }
+.gal .slide { flex: 0 0 100%; aspect-ratio: 16 / 10; scroll-snap-align: start; }
+.gal img { width: 100%; height: 100%; object-fit: contain; display: block; background: #111; }
+.gal .count { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.gal .nav { top: calc(50% - 16px); }
+.gal .nav.l { left: 10px; } .gal .nav.r { right: 10px; }
+.thumbs { display: flex; gap: 6px; margin-top: 6px; overflow-x: auto; scrollbar-width: none; }
+.thumbs img { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; opacity: .55; cursor: pointer; flex: 0 0 auto; border: 2px solid transparent; }
+.thumbs img.on { opacity: 1; border-color: var(--text); }
+.ad-head { margin: 12px 0 4px; }
+.ad-head h1 { margin: 0 0 4px; font-size: 18px; line-height: 1.25; letter-spacing: -.01em; }
+.ad-price { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ad-price .price { font-size: 24px; }
+.pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+.pill.active { background: var(--ok-soft); color: var(--ok); }
+.pill.sold, .pill.removed { background: var(--accent-soft); color: var(--accent); }
+.fav { font-size: 12px; color: var(--muted); }
+.sec { margin-top: 16px; }
+.sec h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); column-gap: 24px; border: 1px solid var(--border); border-radius: 10px; padding: 2px 12px; background: var(--surface); }
+.kv div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.kv dt { color: var(--muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; min-width: 0; }
+.kv dd { margin: 0; font-weight: 600; text-align: right; flex: 0 0 auto; max-width: 60%; overflow-wrap: anywhere; }
+.equip { display: flex; flex-wrap: wrap; gap: 6px; }
+.desc { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
+.desc.clamp { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+.box { border: 1px solid var(--border); border-radius: 10px; padding: 11px 12px; background: var(--surface); }
+.seller { display: flex; gap: 11px; align-items: center; }
+.avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--sunken); display: grid; place-items: center; font-weight: 700; color: var(--muted); flex: 0 0 auto; }
+.seller .who { font-weight: 600; }
+.flags { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.flags li { display: flex; gap: 8px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: var(--info-soft); }
+.flags li.warn { background: var(--warn-soft); }
+.flags li .ic { flex: 0 0 auto; font-weight: 700; }
+.flags li.warn .ic { color: var(--warn); }
+.hist { display: flex; gap: 8px; flex-wrap: wrap; }
+.errs { margin-top: 10px; font-size: 12px; color: var(--warn); }
+
+/* comparison */
+.cmp-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layout: fixed; }
+.cmp th, .cmp td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; min-width: 150px; }
+.cmp th { color: var(--muted); font-weight: 500; position: sticky; left: 0; background: var(--surface); min-width: 120px; width: 120px; z-index: 1; overflow-wrap: anywhere; }
+.cmp td { background: var(--surface); }
+.cmp tr.diff td { background: var(--diff); }
+.cmp tr:last-child th, .cmp tr:last-child td { border-bottom: 0; }
+.cmp .cimg { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; display: block; background: var(--sunken); }
+.cmp .ctitle { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cmp .best { color: var(--ok); font-weight: 700; }
+.fcount { display: inline-block; min-width: 20px; text-align: center; border-radius: 999px; padding: 0 7px; font-weight: 700; font-size: 12px; background: var(--sunken); }
+.fcount.w { background: var(--warn-soft); color: var(--warn); }
+.back { margin-bottom: 10px; }
+
+/* price check */
+.pc-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pc-med .lbl { font-size: 12px; color: var(--muted); }
+.pc-med .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.verdict { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--sunken); }
+.verdict.lo { background: var(--ok-soft); color: var(--ok); }
+.verdict.hi { background: var(--warn-soft); color: var(--warn); }
+.scale { position: relative; height: 92px; margin: 20px 6px 4px; }
+.scale .track { position: absolute; left: 0; right: 0; top: 40px; height: 10px; border-radius: 5px; background: var(--sunken); }
+.scale .r90 { position: absolute; top: 40px; height: 10px; border-radius: 5px; background: var(--band); }
+.scale .r50 { position: absolute; top: 40px; height: 10px; background: var(--band-mid); border-radius: 3px; }
+.scale .tick { position: absolute; top: 34px; width: 2px; height: 22px; background: var(--text); transform: translateX(-1px); border-radius: 1px; }
+.scale .tl { position: absolute; top: 60px; transform: translateX(-50%); font-size: 11px; color: var(--muted); text-align: center; white-space: nowrap; line-height: 1.25; }
+.scale .tl b { display: block; color: var(--text); font-weight: 600; font-size: 12px; }
+.scale .tl.edge-l { transform: none; text-align: left; } .scale .tl.edge-r { transform: translateX(-100%); text-align: right; }
+.scale .mk { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+.scale .mk span { background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.scale .mk i { width: 2px; height: 22px; background: var(--accent); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; margin-top: 2px; }
+.legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+.note { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.mini .card { flex-basis: 160px; }
+.mini .price { font-size: 14px; }
+.mini .title2 { font-size: 12px; }
+.empty { padding: 26px 10px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"></div>
+<script>
+(() => {
+  "use strict";
+  const app = document.getElementById("app");
+  const oa = () => window.openai;
+
+  // ---------- host bridge (MCP Apps postMessage JSON-RPC, with window.openai fallback) ----------
+  let rpcId = 0;
+  const pending = new Map();
+  let hostCaps = null;
+  let toolInput = null;
+  let lastData = null;
+
+  function rpc(method, params, timeoutMs = 30000) {
+    const id = ++rpcId;
+    window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => { pending.delete(id); reject(new Error("timeout")); }, timeoutMs);
+      pending.set(id, { resolve: (v) => { clearTimeout(t); resolve(v); }, reject: (e) => { clearTimeout(t); reject(e); } });
+    });
+  }
+  const notify = (method, params) => window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.parent) return;
+    const m = e.data;
+    if (!m || m.jsonrpc !== "2.0") return;
+    if (m.id != null && pending.has(m.id) && !m.method) {
+      const p = pending.get(m.id); pending.delete(m.id);
+      m.error ? p.reject(new Error(m.error.message || "error")) : p.resolve(m.result);
+      return;
+    }
+    const params = m.params || {};
+    switch (m.method) {
+      case "ui/notifications/tool-input": toolInput = params.arguments || null; break;
+      case "ui/notifications/tool-result": show(params.structuredContent); break;
+      case "ui/notifications/host-context-changed": applyContext(params); break;
+      case "ui/resource-teardown": if (m.id != null) window.parent.postMessage({ jsonrpc: "2.0", id: m.id, result: {} }, "*"); break;
+    }
+  });
+
+  function applyContext(ctx) { if (ctx && ctx.theme) setTheme(ctx.theme); }
+
+  function setTheme(t) {
+    const dark = t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  }
+
+  const canCallTools = () => !!(oa() && oa().callTool) || !!(hostCaps && hostCaps.serverTools);
+  const currentInput = () => toolInput || (oa() && oa().toolInput) || null;
+
+  async function callTool(name, args) {
+    const res = oa() && oa().callTool ? await oa().callTool(name, args) : await rpc("tools/call", { name, arguments: args }, 60000);
+    if (res && res.isError) throw new Error("tool error");
+    return res && (res.structuredContent || res);
+  }
+
+  function openUrl(url) {
+    if (!/^https:\/\//.test(url)) return;
+    if (oa() && oa().openExternal) { oa().openExternal({ href: url }); return; }
+    rpc("ui/open-link", { url }, 5000).catch(() => window.open(url, "_blank", "noopener"));
+  }
+
+  new ResizeObserver(() => {
+    const h = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    notify("ui/notifications/size-changed", { width: Math.ceil(document.documentElement.scrollWidth), height: h });
+  }).observe(document.documentElement);
+
+  // ---------- helpers ----------
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  }
+  function add(parent, ...kids) { for (const k of kids) if (k) parent.append(k); return parent; }
+  const group = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+  const kr = (n) => (n == null ? "Pris saknas" : group(n) + "\u00a0kr");
+  const httpsImg = (u) => (typeof u === "string" && /^https:\/\//.test(u) ? u : null);
+  function img(src, alt, cls) {
+    const i = el("img", cls);
+    i.loading = "lazy"; i.decoding = "async"; i.alt = alt || ""; i.referrerPolicy = "no-referrer";
+    i.src = src;
+    return i;
+  }
+  function priceEl(n, extra) {
+    return el("div", "price" + (n == null ? " none" : "") + (extra ? " " + extra : ""), kr(n));
+  }
+
+  const BADGES = {
+    new_today: ["Ny idag", "hot"], giveaway: ["Bortskänkes", "ok"], wanted: ["Köpes", "dim"], shipping: ["Kan skickas", ""],
+    free_shipping: ["Fri frakt", "ok"], buy_now: ["Köp nu", ""], tryggad: ["Tryggad Bilaffär", "ok"], vat_deductible: ["Avdragsgill moms", ""],
+    sold: ["Såld", "dim"], leasing: ["Leasing", ""], new_vehicle: ["Ny", "hot"],
+  };
+  const SPEC_ORDER = ["year", "mileage_mil", "length_ft", "fuel", "gearbox", "hp", "engine", "class", "condition", "model", "make"];
+  function specText(k, v) {
+    if (v == null || v === "") return null;
+    if (k === "mileage_mil") return (typeof v === "number" ? group(v) : v) + " mil";
+    if (k === "hp") return v + " hk";
+    if (k === "length_ft") return v + " fot";
+    if (k === "year") return String(v);
+    return String(v);
+  }
+  const VERTICAL_NAMES = {
+    torget: "Torget", car: "Bilar", boat: "Båtar", mc: "Motorcyklar", caravan: "Husvagnar", motorhome: "Husbilar", truck: "Lastbilar",
+    tractor: "Traktorer", combine: "Tröskor", snowmobile: "Snöskotrar", atv: "Fyrhjulingar", moped: "Mopeder", bus: "Bussar",
+  };
+
+  function chipsFor(applied, unmatched) {
+    const wrap = el("div", "chips");
+    for (const f of applied || []) { const c = el("span", "chip"); add(c, el("span", "muted", f.name), el("b", null, f.value)); wrap.append(c); }
+    for (const f of unmatched || []) {
+      const c = el("span", "chip warn", "Ej tillämpat: " + f.name + " = " + f.value);
+      if (f.suggestions && f.suggestions.length) c.title = "Förslag: " + f.suggestions.join(", ");
+      wrap.append(c);
+    }
+    return wrap.childElementCount ? wrap : null;
+  }
+
+  function railNav(wrap, rail) {
+    const l = el("button", "nav l", "‹"), r = el("button", "nav r", "›");
+    l.setAttribute("aria-label", "Föregående"); r.setAttribute("aria-label", "Nästa");
+    const step = () => Math.max(220, rail.clientWidth * 0.8);
+    l.onclick = () => rail.scrollBy({ left: -step(), behavior: "smooth" });
+    r.onclick = () => rail.scrollBy({ left: step(), behavior: "smooth" });
+    const upd = () => { l.hidden = rail.scrollLeft < 8; r.hidden = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 8; };
+    rail.addEventListener("scroll", upd, { passive: true });
+    new ResizeObserver(upd).observe(rail);
+    add(wrap, l, r);
+  }
+
+  // ---------- cards ----------
+  function rowCard(row, opts) {
+    const card = el("article", "card");
+    card.tabIndex = 0;
+    card.setAttribute("role", "link");
+    card.onclick = () => openUrl(row.url);
+    card.onkeydown = (e) => { if (e.key === "Enter") openUrl(row.url); };
+    const ph = el("div", "ph");
+    const src = httpsImg(row.image);
+    ph.append(src ? img(src, row.title) : el("div", "noimg", "Ingen bild"));
+    const badges = el("div", "badges");
+    for (const b of (row.badges || []).slice(0, 2)) {
+      const m = BADGES[b]; if (!m) continue;
+      badges.append(el("span", "badge" + (m[1] ? " " + m[1] : ""), m[0]));
+    }
+    if (badges.childElementCount) ph.append(badges);
+    if (opts && opts.star) {
+      const s = el("button", "star");
+      const sync = () => { const on = opts.star.has(row.id); s.classList.toggle("on", on); s.textContent = on ? "★" : "☆"; s.setAttribute("aria-pressed", String(on)); };
+      s.setAttribute("aria-label", "Lägg till i jämförelse");
+      s.onclick = (e) => { e.stopPropagation(); opts.star.has(row.id) ? opts.star.delete(row.id) : opts.star.add(row.id); sync(); opts.onStar(); };
+      sync();
+      ph.append(s);
+    }
+    const cb = el("div", "cb");
+    add(cb, priceEl(row.price), el("div", "title2", row.title));
+    const meta = el("div", "meta");
+    if (row.place) meta.append(el("span", null, row.place));
+    if (typeof row.distance_km === "number") meta.append(el("span", null, "≈ " + (row.distance_km < 10 ? row.distance_km.toFixed(1).replace(".", ",") : Math.round(row.distance_km)) + " km"));
+    if (row.age) meta.append(el("span", null, row.age));
+    cb.append(meta);
+    const specs = el("div", "specs");
+    const keys = SPEC_ORDER.filter((k) => row.specs && row.specs[k] != null && row.specs[k] !== "");
+    for (const k of keys.slice(0, (opts && opts.maxSpecs) || 3)) { const t = specText(k, row.specs[k]); if (t) specs.append(el("span", "spec", t)); }
+    if (specs.childElementCount) cb.append(specs);
+    card.append(ph, cb);
+    return card;
+  }
+
+  // ---------- views ----------
+  function waiting() {
+    app.replaceChildren();
+    const head = el("div", "head");
+    add(head, el("span", "brand", "Blocket"), el("span", "muted", "Hämtar från Blocket…"));
+    const w = el("div", "wait");
+    for (let i = 0; i < 4; i++) {
+      const c = el("div", "card");
+      const ph = el("div", "ph sk"); ph.style.borderRadius = "0";
+      const cb = el("div", "cb");
+      for (const [wd, h] of [["55%", 16], ["90%", 12], ["70%", 12]]) { const s = el("div", "sk"); s.style.width = wd; s.style.height = h + "px"; s.style.marginTop = "4px"; cb.append(s); }
+      add(c, ph, cb); w.append(c);
+    }
+    add(app, head, w);
+  }
+
+  function renderSearch(data) {
+    app.replaceChildren();
+    const starred = new Set();
+    const head = el("div", "head");
+    const left = el("div");
+    add(left, el("span", "brand", "Blocket · " + (VERTICAL_NAMES[data.vertical] || data.vertical)));
+    const tot = el("div", "total num", group(data.total) + (data.total === 1 ? " annons" : " annonser"));
+    add(head, left, tot);
+    app.append(head);
+    const chips = chipsFor(data.applied, data.unmatched);
+    if (chips) app.append(chips);
+
+    if (!data.rows.length) { app.append(el("div", "empty", "Inga annonser matchar sökningen.")); }
+    const wrap = el("div", "rail-wrap");
+    const rail = el("div", "rail");
+    wrap.append(rail);
+    const opts = canCallTools() ? { star: starred, onStar: () => syncBar() } : null;
+    const seen = new Set();
+    const addRows = (rows) => { for (const r of rows) { if (seen.has(r.id)) continue; seen.add(r.id); rail.insertBefore(rowCard(r, opts), moreBtn); } };
+
+    let page = data.page, last = data.last_page;
+    const moreBtn = el("button", "more", "Visa fler →");
+    const input = currentInput();
+    const canMore = () => canCallTools() && input && page < last;
+    moreBtn.onclick = async () => {
+      moreBtn.disabled = true; moreBtn.textContent = "Hämtar…";
+      try {
+        const res = await callTool("search", Object.assign({}, input, { page: page + 1 }));
+        if (res && Array.isArray(res.rows)) { page = res.page; last = res.last_page; addRows(res.rows); }
+        moreBtn.textContent = "Visa fler →";
+      } catch { moreBtn.textContent = "Försök igen"; }
+      moreBtn.disabled = false;
+      moreBtn.hidden = !canMore();
+    };
+    rail.append(moreBtn);
+    moreBtn.hidden = !canMore();
+    addRows(data.rows);
+    railNav(wrap, rail);
+    if (data.rows.length) app.append(wrap);
+
+    const bar = el("div", "bar");
+    const cmp = el("button", "btn primary");
+    cmp.onclick = async () => {
+      const ids = [...starred].slice(0, 5);
+      cmp.disabled = true; cmp.textContent = "Hämtar…";
+      try {
+        const res = await callTool("get_ad", { ids });
+        if (res && Array.isArray(res.ads)) { renderAds(res, () => renderSearchAgain()); return; }
+      } catch {}
+      cmp.textContent = "Kunde inte hämta – försök igen"; cmp.disabled = false;
+    };
+    const renderSearchAgain = () => { renderSearch(data); };
+    const hint = el("span", "muted");
+    hint.style.fontSize = "12px";
+    function syncBar() {
+      const n = starred.size;
+      cmp.hidden = !opts;
+      cmp.disabled = n < 1;
+      cmp.textContent = n > 5 ? "Jämför (max 5)" : n === 1 ? "Visa (1)" : "Jämför (" + n + ")";
+      if (n > 5) cmp.disabled = true;
+      hint.textContent = opts && n === 0 ? "Markera ☆ för att jämföra" : "";
+    }
+    syncBar();
+    const open = el("button", "link", "Öppna sökningen på Blocket ↗");
+    open.onclick = () => openUrl(data.blocket_url);
+    add(bar, cmp, hint, el("span", "grow"), open);
+    app.append(bar);
+  }
+
+  function gallery(images, title) {
+    const g = el("div", "gal");
+    const track = el("div", "track");
+    images.forEach((u, i) => { const s = el("div", "slide"); s.append(img(u, title + " bild " + (i + 1))); track.append(s); });
+    g.append(track);
+    const count = el("span", "count num");
+    const thumbs = el("div", "thumbs");
+    const idx = () => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+    const go = (i) => track.scrollTo({ left: i * track.clientWidth, behavior: "smooth" });
+    if (images.length > 1) {
+      const l = el("button", "nav l", "‹"), r = el("button", "nav r", "›");
+      l.setAttribute("aria-label", "Föregående bild"); r.setAttribute("aria-label", "Nästa bild");
+      l.onclick = () => go(Math.max(0, idx() - 1)); r.onclick = () => go(Math.min(images.length - 1, idx() + 1));
+      add(g, l, r, count);
+      images.slice(0, 20).forEach((u, i) => { const t = img(u, ""); t.onclick = () => go(i); thumbs.append(t); });
+      const upd = () => {
+        const i = idx();
+        count.textContent = i + 1 + " / " + images.length;
+        l.hidden = i === 0; r.hidden = i >= images.length - 1;
+        [...thumbs.children].forEach((t, j) => t.classList.toggle("on", j === i));
+      };
+      track.addEventListener("scroll", upd, { passive: true });
+      requestAnimationFrame(upd);
+    }
+    const frag = document.createDocumentFragment();
+    add(frag, g, images.length > 1 ? thumbs : null);
+    return frag;
+  }
+
+  const STATUS = { active: "Aktiv", sold: "Såld", removed: "Borttagen" };
+
+  function section(title, body) { const s = el("section", "sec"); add(s, el("h2", null, title), body); return s; }
+
+  function renderAd(ad, back) {
+    if (back) { const b = el("button", "btn back", "← Tillbaka till sökningen"); b.onclick = back; app.append(b); }
+    const imgs = (ad.images || []).map(httpsImg).filter(Boolean);
+    if (imgs.length) app.append(gallery(imgs, ad.title));
+    const h = el("div", "ad-head");
+    h.append(el("h1", null, ad.title));
+    const pr = el("div", "ad-price");
+    add(pr, priceEl(ad.price), el("span", "pill " + ad.status, STATUS[ad.status] || ad.status));
+    if (ad.favorites != null) pr.append(el("span", "fav", "♥ Sparad av " + group(ad.favorites)));
+    h.append(pr);
+    const meta = el("div", "meta");
+    const place = [ad.place && ad.place.postal_code, ad.place && ad.place.city].filter(Boolean).join(" ");
+    if (place) meta.append(el("span", null, place));
+    if (ad.published) meta.append(el("span", null, "Publicerad " + fmtDate(ad.published)));
+    if (ad.edited) meta.append(el("span", null, "Ändrad " + fmtDate(ad.edited)));
+    if (ad.shipping && ad.shipping.can_ship) meta.append(el("span", null, ad.shipping.seller_pays ? "Fri frakt" : "Kan skickas"));
+    if (ad.shipping && ad.shipping.buy_now) meta.append(el("span", null, "Köp nu"));
+    h.append(meta);
+    app.append(h);
+
+    if (ad.red_flags && ad.red_flags.length) {
+      const ul = el("ul", "flags");
+      for (const f of ad.red_flags) {
+        const li = el("li", f.level === "warn" ? "warn" : "");
+        add(li, el("span", "ic", f.level === "warn" ? "!" : "i"), el("span", null, f.text));
+        ul.append(li);
+      }
+      app.append(section("Att kontrollera", ul));
+    }
+
+    const specKeys = Object.keys(ad.specs || {});
+    if (specKeys.length) {
+      const dl = el("dl", "kv");
+      dl.style.margin = "0";
+      for (const k of specKeys) { const d = el("div"); add(d, el("dt", null, k), el("dd", null, ad.specs[k])); dl.append(d); }
+      app.append(section("Specifikationer", dl));
+    }
+    if (ad.equipment && ad.equipment.length) {
+      const eq = el("div", "equip");
+      const LIMIT = 14;
+      ad.equipment.forEach((x, i) => { const c = el("span", "chip", x); if (i >= LIMIT) c.hidden = true; eq.append(c); });
+      if (ad.equipment.length > LIMIT) {
+        const m = el("button", "link", "+" + (ad.equipment.length - LIMIT) + " till");
+        m.onclick = () => { [...eq.children].forEach((c) => (c.hidden = false)); m.remove(); };
+        eq.append(m);
+      }
+      app.append(section("Utrustning", eq));
+    }
+    if (ad.description) {
+      const wrap = el("div");
+      const d = el("div", "desc clamp", ad.description);
+      wrap.append(d);
+      if (ad.description.length > 320 || ad.description.split("\n").length > 5) {
+        const t = el("button", "link", "Visa mer");
+        t.onclick = () => { const c = d.classList.toggle("clamp"); t.textContent = c ? "Visa mer" : "Visa mindre"; };
+        t.style.marginTop = "6px";
+        wrap.append(t);
+      }
+      app.append(section("Beskrivning", wrap));
+    }
+
+    const s = ad.seller || {};
+    const box = el("div", "box seller");
+    const name = s.name || (s.type === "dealer" ? "Företag" : "Privatperson");
+    const info = el("div");
+    add(info, el("div", "who", name));
+    const sm = el("div", "meta");
+    sm.append(el("span", null, s.type === "dealer" ? "Företag" : "Privat säljare"));
+    if (s.member_since) sm.append(el("span", null, s.member_since));
+    if (s.ad_count != null) sm.append(el("span", null, group(s.ad_count) + " annonser"));
+    info.append(sm);
+    if (s.address) info.append(el("div", "meta", s.address));
+    add(box, el("div", "avatar", name.trim().charAt(0).toUpperCase() || "?"), info);
+    app.append(section("Säljare", box));
+
+    if (ad.history_links && ad.history_links.length) {
+      const hl = el("div", "hist");
+      for (const l of ad.history_links) { const b = el("button", "btn", l.label + " ↗"); b.onclick = () => openUrl(l.url); hl.append(b); }
+      app.append(section("Fordonshistorik", hl));
+    }
+    const open = el("button", "btn primary wide", "Öppna på Blocket ↗");
+    open.style.marginTop = "16px";
+    open.onclick = () => openUrl(ad.url);
+    app.append(open);
+  }
+
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+  }
+
+  function renderCompare(ads, back) {
+    if (back) { const b = el("button", "btn back", "← Tillbaka till sökningen"); b.onclick = back; app.append(b); }
+    const head = el("div", "head");
+    add(head, el("span", "brand", "Blocket · Jämförelse"), el("span", "muted", ads.length + " annonser"));
+    app.append(head);
+    const wrap = el("div", "cmp-wrap");
+    const t = el("table", "cmp");
+    t.style.minWidth = 120 + 170 * ads.length + "px";
+    const row = (label, cells, cls) => {
+      const tr = el("tr", cls);
+      tr.append(el("th", null, label));
+      for (const c of cells) { const td = el("td"); if (c instanceof Node) td.append(c); else td.textContent = c == null ? "–" : c; tr.append(td); }
+      t.append(tr);
+    };
+    row("", ads.map((a) => {
+      const f = document.createDocumentFragment();
+      const u = httpsImg((a.images || [])[0]);
+      if (u) { const i = img(u, a.title, "cimg"); i.style.cursor = "pointer"; i.onclick = () => openUrl(a.url); f.append(i); }
+      const tt = el("div", "ctitle", a.title); tt.style.marginTop = "6px";
+      f.append(tt);
+      const wrapper = el("div"); wrapper.append(f); return wrapper;
+    }));
+    const prices = ads.map((a) => a.price).filter((p) => p != null);
+    const minP = prices.length > 1 ? Math.min(...prices) : null;
+    row("Pris", ads.map((a) => el("span", "num" + (a.price != null && a.price === minP ? " best" : ""), kr(a.price))), new Set(ads.map((a) => a.price)).size > 1 ? "diff" : "");
+    row("Status", ads.map((a) => STATUS[a.status] || a.status));
+    row("Plats", ads.map((a) => (a.place && a.place.city) || "–"));
+    row("Säljare", ads.map((a) => (a.seller && a.seller.name) || (a.seller && a.seller.type === "dealer" ? "Företag" : "Privat")));
+    if (ads.some((a) => a.favorites != null)) row("Sparad av", ads.map((a) => (a.favorites == null ? "–" : group(a.favorites))));
+    const labels = [];
+    for (const a of ads) for (const k of Object.keys(a.specs || {})) if (!labels.includes(k)) labels.push(k);
+    const shared = labels.filter((k) => ads.filter((a) => a.specs && a.specs[k] != null).length >= Math.min(2, ads.length));
+    for (const k of shared.slice(0, 18)) {
+      const vals = ads.map((a) => (a.specs && a.specs[k] != null ? a.specs[k] : null));
+      row(k, vals, new Set(vals.map((v) => (v == null ? "" : v))).size > 1 ? "diff" : "");
+    }
+    row("Att kontrollera", ads.map((a) => {
+      const w = (a.red_flags || []).filter((f) => f.level === "warn").length, n = (a.red_flags || []).length;
+      const s = el("span");
+      add(s, el("span", "fcount" + (w ? " w" : ""), String(n)), el("span", "muted", w ? " varav " + w + " varning" + (w > 1 ? "ar" : "") : n ? " info" : " inga"));
+      s.title = (a.red_flags || []).map((f) => f.text).join("\n");
+      return s;
+    }));
+    row("", ads.map((a) => { const b = el("button", "btn", "Öppna ↗"); b.onclick = () => openUrl(a.url); return b; }));
+    wrap.append(t);
+    app.append(wrap);
+  }
+
+  function renderAds(data, back) {
+    app.replaceChildren();
+    if (!data.ads.length) app.append(el("div", "empty", "Annonsen kunde inte hämtas."));
+    else if (data.ads.length === 1) renderAd(data.ads[0], back);
+    else renderCompare(data.ads, back);
+    if (data.errors && data.errors.length) {
+      const e = el("div", "errs");
+      e.textContent = "Kunde inte hämta: " + data.errors.map((x) => x.id).join(", ");
+      app.append(e);
+    }
+  }
+
+  function renderPrice(data) {
+    app.replaceChildren();
+    const head = el("div", "head");
+    add(head, el("span", "brand", "Blocket · Prisläge"), el("span", "muted num", group(data.comparables) + " jämförbara annonser"));
+    app.append(head);
+    const chips = chipsFor(data.applied, data.unmatched);
+    if (chips) app.append(chips);
+    const ap = data.asking_price;
+    if (!ap) {
+      app.append(el("div", "empty", "För få jämförbara annonser med pris."));
+    } else {
+      const top = el("div", "pc-top");
+      const med = el("div", "pc-med");
+      add(med, el("div", "lbl", "Medianpris (begärt)"), el("div", "v num", kr(ap.median)));
+      top.append(med);
+      const ad = data.ad;
+      if (ad && ad.price != null && ad.percentile != null) {
+        const p = Math.round(ad.percentile);
+        const diff = ap.median ? Math.round(((ad.price - ap.median) / ap.median) * 100) : 0;
+        const cls = p <= 35 ? "lo" : p >= 65 ? "hi" : "";
+        const txt = (diff === 0 ? "I nivå med medianen" : Math.abs(diff) + " % " + (diff < 0 ? "under" : "över") + " medianen") + " · dyrare än " + p + " % av annonserna";
+        top.append(el("div", "verdict " + cls, txt));
+      }
+      app.append(top);
+
+      const pts = [ap.p10, ap.p90].concat(ad && ad.price != null ? [ad.price] : []);
+      let lo = Math.min(...pts), hi = Math.max(...pts);
+      const pad = (hi - lo) * 0.08 || Math.max(1, hi * 0.1);
+      lo = Math.max(0, lo - pad); hi += pad;
+      const pos = (v) => ((v - lo) / (hi - lo)) * 100;
+      const sc = el("div", "scale");
+      const r90 = el("div", "r90"); r90.style.left = pos(ap.p10) + "%"; r90.style.width = pos(ap.p90) - pos(ap.p10) + "%";
+      const r50 = el("div", "r50"); r50.style.left = pos(ap.p25) + "%"; r50.style.width = pos(ap.p75) - pos(ap.p25) + "%";
+      add(sc, el("div", "track"), r90, r50);
+      const tick = el("div", "tick"); tick.style.left = pos(ap.median) + "%"; sc.append(tick);
+      const labels = [["10 %", ap.p10], ["Median", ap.median], ["90 %", ap.p90]];
+      const placed = [];
+      for (const [name, v] of labels) {
+        const x = pos(v);
+        if (placed.some((p) => Math.abs(p - x) < 16)) continue;
+        placed.push(x);
+        const tl = el("div", "tl" + (x < 8 ? " edge-l" : x > 92 ? " edge-r" : ""));
+        tl.style.left = x + "%";
+        add(tl, el("b", "num", kr(v)), el("span", null, name));
+        sc.append(tl);
+      }
+      if (ad && ad.price != null) {
+        const mk = el("div", "mk");
+        const x = pos(ad.price);
+        mk.style.left = x + "%";
+        if (x < 10) { mk.style.transform = "none"; mk.style.alignItems = "flex-start"; }
+        if (x > 90) { mk.style.transform = "translateX(-100%)"; mk.style.alignItems = "flex-end"; }
+        add(mk, el("span", "num", "Denna: " + kr(ad.price)), el("i"));
+        sc.append(mk);
+      }
+      app.append(sc);
+      const lg = el("div", "legend");
+      const li = (color, text) => { const s = el("span"); const i = el("i"); i.style.background = color; add(s, i, document.createTextNode(text)); return s; };
+      add(lg, li("var(--band-mid)", "Mittenhälften " + kr(ap.p25) + " – " + kr(ap.p75)), li("var(--band)", "80 % av annonserna " + kr(ap.p10) + " – " + kr(ap.p90)));
+      app.append(lg);
+    }
+    if (data.note) app.append(el("div", "note", data.note));
+    if (data.examples && data.examples.length) {
+      const sec = el("section", "sec");
+      sec.append(el("h2", null, "Exempel på jämförbara"));
+      const wrap = el("div", "rail-wrap mini");
+      const rail = el("div", "rail");
+      for (const r of data.examples) rail.append(rowCard(r, { maxSpecs: 2 }));
+      wrap.append(rail);
+      railNav(wrap, rail);
+      sec.append(wrap);
+      app.append(sec);
+    }
+    const bar = el("div", "bar");
+    const open = el("button", "link", "Visa jämförbara på Blocket ↗");
+    open.onclick = () => openUrl(data.blocket_url);
+    add(bar, el("span", "grow"), open);
+    app.append(bar);
+  }
+
+  function show(sc) {
+    if (!sc || typeof sc !== "object") return;
+    if (lastData === sc) return;
+    lastData = sc;
+    try {
+      if (Array.isArray(sc.rows)) renderSearch(sc);
+      else if (Array.isArray(sc.ads)) renderAds(sc);
+      else if ("asking_price" in sc) renderPrice(sc);
+    } catch (err) {
+      app.replaceChildren(el("div", "empty", "Kunde inte visa resultatet."));
+      console.error(err);
+    }
+  }
+
+  // ---------- boot ----------
+  setTheme(oa() && oa().theme);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (!(oa() && oa().theme)) setTheme(); });
+  waiting();
+  if (oa() && oa().toolOutput) show(oa().toolOutput);
+  window.addEventListener("openai:set_globals", (e) => {
+    const g = (e.detail && e.detail.globals) || {};
+    if (g.theme) setTheme(g.theme);
+    if (g.toolInput) toolInput = g.toolInput;
+    if (g.toolOutput) show(g.toolOutput);
+  });
+  rpc("ui/initialize", {
+    protocolVersion: "2026-01-26",
+    appInfo: { name: "blocket-widget", version: "2.0.0" },
+    appCapabilities: {},
+  }, 10000).then((r) => {
+    hostCaps = (r && r.hostCapabilities) || {};
+    applyContext(r && r.hostContext);
+    notify("ui/notifications/initialized", {});
+    if (lastData && Array.isArray(lastData.rows)) { const d = lastData; lastData = null; show(d); }
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
