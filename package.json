@@ -9,12 +9,12 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.5.4"
+    "@cfworker/json-schema": "^4.1.6",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "wrangler": "^4.129.0"
+    "wrangler": "^4.158.0"
   }
 }
