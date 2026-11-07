@@ -17,7 +17,26 @@ It can't log in, message sellers or post anything. It reads public ads and that'
 
 **list_filters** lists a section's filters and values with live counts.
 
-## Run your own
+## On your own computer
+
+Claude Desktop, Claude Code, Cursor and Codex can run the server locally over stdio. That needs no token and no hosting.
+
+For Claude Desktop, download `blocket-mcp-<version>.mcpb` from [Releases](https://github.com/idoo/blocket-mcp/releases) and double-click it.
+
+Other clients can start it with Docker. In Claude Code that looks like this:
+
+```sh
+claude mcp add blocket -- docker run -i --rm ghcr.io/idoo/blocket-mcp
+```
+
+Cursor and Codex take the same command and args in their MCP config. If you'd rather skip Docker, build it yourself with Node 20 or newer:
+
+```sh
+npm ci && npm run build:stdio
+node dist/blocket-mcp.js
+```
+
+## Hosted, for ChatGPT and claude.ai
 
 ChatGPT and claude.ai can't reach your laptop, so the server needs a public HTTPS address. I run mine on Cloudflare. Firebase works too.
 

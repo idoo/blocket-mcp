@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-latest.schema.json",
+  "manifest_version": "0.3",
+  "name": "blocket-mcp",
+  "display_name": "Blocket",
+  "version": "0.0.0",
+  "description": "Search Blocket.se listings from Claude: marketplace, cars, boats, motorcycles and more. Read-only, no account needed.",
+  "long_description": "Search Blocket.se from Claude. Find ads in the marketplace and in cars, boats, motorcycles, caravans and other vehicles. Read one ad in full and check what similar items are listed for. It only reads public listings. No account or API key is needed.",
+  "author": {
+    "name": "Ivan Verevkin",
+    "url": "https://github.com/idoo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/idoo/blocket-mcp"
+  },
+  "homepage": "https://github.com/idoo/blocket-mcp",
+  "documentation": "https://github.com/idoo/blocket-mcp#readme",
+  "support": "https://github.com/idoo/blocket-mcp/issues",
+  "license": "MIT",
+  "keywords": ["blocket", "sweden", "marketplace", "classifieds", "second-hand", "cars"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/blocket-mcp.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/blocket-mcp.js"]
+    }
+  },
+  "tools_generated": false,
+  "prompts_generated": false,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}

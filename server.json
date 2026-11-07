@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.idoo/blocket-mcp",
+  "title": "Blocket MCP",
+  "description": "Read-only MCP server for Blocket.se: search ads, read one in full, check asking prices.",
+  "repository": {
+    "url": "https://github.com/idoo/blocket-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/idoo/blocket-mcp",
+  "version": "0.0.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/idoo/blocket-mcp/releases/download/v0.0.0/blocket-mcp-0.0.0.mcpb",
+      "version": "0.0.0",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/idoo/blocket-mcp:0.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

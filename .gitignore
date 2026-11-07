@@ -2,6 +2,7 @@ node_modules/
 .wrangler/
 .dev.vars
 functions/lib/
+dist/
 functions/.secret.local
 .firebase/
 *-debug.log
