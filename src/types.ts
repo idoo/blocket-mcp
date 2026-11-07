@@ -18,7 +18,10 @@ export const VERTICALS = [
 ] as const;
 export type Vertical = (typeof VERTICALS)[number];
 
-/** Result sort orders; not every vertical supports every order (src/blocket/verticals.ts maps them). */
+/**
+ * Result sort orders; not every vertical supports every order (src/blocket/verticals.ts maps them).
+ * "deal" is computed by this server: Blocket's default order, then rows re-sorted by vs_median_pct.
+ */
 export const SORTS = [
   "relevance",
   "newest",
@@ -32,6 +35,7 @@ export const SORTS = [
   "mileage_desc",
   "length_desc",
   "length_asc",
+  "deal",
 ] as const;
 export type Sort = (typeof SORTS)[number];
 
@@ -48,6 +52,21 @@ export type Seller = {
  * new_today, giveaway, wanted, shipping, free_shipping, buy_now, tryggad (Tryggad Bilaffär), vat_deductible, sold, leasing, new_vehicle.
  */
 export type Badge = string;
+
+/** Where a row's asking price sits among comparable ads of the same search (search with deals or sort "deal"). */
+export type Deal = {
+  /** Share of comparables priced below this row, 0-100. */
+  percentile: number;
+  /** Price vs the comparables' median in percent; negative = cheaper. */
+  vs_median_pct: number;
+  /** great ≤ p10, good ≤ p25, fair ≤ p75, high above. */
+  label: "great" | "good" | "fair" | "high";
+};
+
+/** The comparables behind Row.deal: one Blocket request of up to 200 ads of the same search with usable asking prices. */
+export type DealBasis =
+  | { comparables: number; median: number; p25: number; p75: number }
+  | { comparables: number; median: null; note: string };
 
 /** One search hit, kept to a few hundred bytes. */
 export type Row = {
@@ -74,6 +93,10 @@ export type Row = {
   url: string;
   /** Thumbnail (images.blocketcdn.se). */
   image?: string;
+  /** Only when the search asked for deals and the row has a usable asking price. */
+  deal?: Deal;
+  /** Risk words found in the title (defekt, reservdelar, startar inte...); only when there are some. */
+  risk_words?: string[];
 };
 
 /** A filter the server actually sent to Blocket, in human terms: { name: "make", value: "Volvo" }, { name: "price", value: "≤ 5 000 kr" }. */
@@ -97,6 +120,14 @@ export type SearchResult = {
   facets?: Facet[];
   /** The same search on blocket.se (save it in the Blocket app for push alerts). */
   blocket_url: string;
+  /** Ads looked at on Blocket for this response (more than rows.length when require/exclude/title_only dropped some). */
+  scanned: number;
+  /** Ads dropped by require/exclude/title_only. */
+  dropped: number;
+  /** Blocket page to continue from (pass as page with the same arguments), or null when there are no more. */
+  next_page: number | null;
+  /** Only with deals or sort "deal". */
+  deal_basis?: DealBasis;
 };
 
 export type FilterInfo = {
@@ -139,9 +170,27 @@ export type AdDetail = {
     /** Number of active ads by this seller, when Blocket shows it. */
     ad_count?: number;
     address?: string;
+    /**
+     * Dealer rating shown on vehicle ads. Blocket links it to Google Maps reviews (scale 5);
+     * Blocket's own seller reviews are not in the ad page.
+     */
+    rating?: { score: number; count: number; scale: number; source: "google" };
   };
   /** Torget only: Blocket shipping and buy-now (Blocket's protected payment). */
   shipping?: { can_ship: boolean; buy_now: boolean; seller_pays: boolean };
+  /** Vehicle ads: numbers parsed from the specs and price box, only those Blocket shows. */
+  vehicle?: {
+    /** "Effekt" (cars, MC) or "Motorstorlek" (boats), in hk. */
+    horsepower?: number;
+    /** "Räckvidd (WLTP)", electric vehicles. */
+    range_km?: number;
+    /** "Batterikapacitet", electric vehicles. */
+    battery_kwh?: number;
+    /** True when the dealer shows a price excluding VAT (VAT can be deducted by companies). */
+    vat_deductible?: boolean;
+    /** SEK excluding VAT, as the dealer shows it. */
+    price_excl_vat?: number;
+  };
   /** How many users saved the ad as a favourite (demand signal). */
   favorites?: number;
   /** Facts worth checking before paying or driving; never a verdict. */

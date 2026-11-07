@@ -68,6 +68,12 @@ a { color: var(--link); text-decoration: none; }
 .meta span + span::before { content: "·"; margin-right: 6px; color: var(--faint); }
 .specs { display: flex; flex-wrap: nowrap; gap: 4px; margin-top: 3px; overflow: hidden; }
 .spec { flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--sunken); color: var(--muted); }
+.deal { align-self: flex-start; max-width: 100%; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 5px; overflow-wrap: anywhere; background: var(--sunken); color: var(--muted); }
+.deal.great { background: var(--ok); color: var(--bg); }
+.deal.good { background: var(--ok-soft); color: var(--ok); }
+.deal.high { background: var(--warn-soft); color: var(--warn); }
+.risk { align-self: flex-start; max-width: 100%; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 5px; margin-top: 3px; background: var(--warn-soft); color: var(--warn); overflow-wrap: anywhere; }
+.seller .rating { color: var(--text); font-weight: 600; }
 .more { flex: 0 0 140px; scroll-snap-align: start; border: 1px dashed var(--border-strong); border-radius: var(--radius); background: transparent; display: grid; place-items: center; color: var(--muted); font-weight: 600; }
 .more:hover { color: var(--text); border-color: var(--muted); }
 .nav { position: absolute; top: calc(50% - 30px); width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); box-shadow: 0 2px 6px rgba(0,0,0,.12); font-size: 18px; line-height: 1; padding: 0; z-index: 2; }
@@ -281,6 +287,42 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
     torget: "Torget", car: "Bilar", boat: "Båtar", mc: "Motorcyklar", caravan: "Husvagnar", motorhome: "Husbilar", truck: "Lastbilar",
     tractor: "Traktorer", combine: "Tröskor", snowmobile: "Snöskotrar", atv: "Fyrhjulingar", moped: "Mopeder", bus: "Bussar",
   };
+  const DEAL_NAMES = { great: "Fynd", good: "Bra pris", fair: "Normalt pris", high: "Högt pris" };
+  function dealEl(d) {
+    if (!d || !DEAL_NAMES[d.label]) return null;
+    let t = DEAL_NAMES[d.label];
+    if (typeof d.vs_median_pct === "number") {
+      const p = Math.round(d.vs_median_pct);
+      t += " · " + (p === 0 ? "som median" : Math.abs(p) + " % " + (p < 0 ? "under" : "över") + " median");
+    }
+    return el("span", "deal " + d.label, t);
+  }
+  function riskEl(words) {
+    if (!Array.isArray(words) || !words.length) return null;
+    return el("span", "risk", "Obs: " + words.join(", "));
+  }
+  const dec1 = (n) => n.toFixed(1).replace(".", ",");
+  function ratingText(s) {
+    const r = s && s.rating;
+    if (!r || typeof r.score !== "number") return null;
+    const scale = typeof r.scale === "number" ? r.scale : 10;
+    const google = r.source === "google";
+    const noun = (r.count === 1 ? "omdöme" : "omdömen");
+    return "★ " + dec1(r.score) + " / " + scale + (typeof r.count === "number" ? " · " + group(r.count) + " " + (google ? "Google-" + noun : noun) : google ? " på Google" : "");
+  }
+  /** [key, label, format] for the optional `vehicle` block of get_ad. */
+  const VEHICLE_FIELDS = [
+    ["horsepower", "Hästkrafter", (v) => group(v) + " hk"],
+    ["range_km", "Räckvidd", (v) => group(v) + " km"],
+    ["battery_kwh", "Batteri", (v) => (Number.isInteger(v) ? String(v) : dec1(v)) + " kWh"],
+    ["vat_deductible", "Avdragsgill moms", (v) => (v ? "Ja" : "Nej")],
+    ["price_excl_vat", "Pris exkl. moms", (v) => kr(v)],
+  ];
+  function vehicleValue(veh, key, fmt) {
+    const v = veh && veh[key];
+    if (key === "vat_deductible") return typeof v === "boolean" ? fmt(v) : null;
+    return typeof v === "number" ? fmt(v) : null;
+  }
 
   function chipsFor(applied, unmatched) {
     const wrap = el("div", "chips");
@@ -330,7 +372,7 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
       ph.append(s);
     }
     const cb = el("div", "cb");
-    add(cb, priceEl(row.price), el("div", "title2", row.title));
+    add(cb, priceEl(row.price), dealEl(row.deal), el("div", "title2", row.title));
     const meta = el("div", "meta");
     if (row.place) meta.append(el("span", null, row.place));
     if (typeof row.distance_km === "number") meta.append(el("span", null, "≈ " + (row.distance_km < 10 ? row.distance_km.toFixed(1).replace(".", ",") : Math.round(row.distance_km)) + " km"));
@@ -340,6 +382,8 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
     const keys = SPEC_ORDER.filter((k) => row.specs && row.specs[k] != null && row.specs[k] !== "");
     for (const k of keys.slice(0, (opts && opts.maxSpecs) || 3)) { const t = specText(k, row.specs[k]); if (t) specs.append(el("span", "spec", t)); }
     if (specs.childElementCount) cb.append(specs);
+    const risk = riskEl(row.risk_words);
+    if (risk) cb.append(risk);
     card.append(ph, cb);
     return card;
   }
@@ -399,6 +443,12 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
     addRows(data.rows);
     railNav(wrap, rail);
     if (data.rows.length) app.append(wrap);
+    const db = data.deal_basis;
+    if (db && typeof db.comparables === "number") {
+      app.append(el("div", "note", typeof db.median === "number"
+        ? "Prisetiketter jämför med medianen " + kr(db.median) + " av " + group(db.comparables) + " liknande annonser."
+        : "För få jämförbara annonser för prisetiketter (" + group(db.comparables) + ")."));
+    }
 
     const bar = el("div", "bar");
     const cmp = el("button", "btn primary");
@@ -499,6 +549,13 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
       for (const k of specKeys) { const d = el("div"); add(d, el("dt", null, k), el("dd", null, ad.specs[k])); dl.append(d); }
       app.append(section("Specifikationer", dl));
     }
+    const vrows = VEHICLE_FIELDS.map(([k, label, fmt]) => [label, vehicleValue(ad.vehicle, k, fmt)]).filter((r) => r[1] != null);
+    if (vrows.length) {
+      const dl = el("dl", "kv");
+      dl.style.margin = "0";
+      for (const [label, v] of vrows) { const d = el("div"); add(d, el("dt", null, label), el("dd", null, v)); dl.append(d); }
+      app.append(section("Fordon", dl));
+    }
     if (ad.equipment && ad.equipment.length) {
       const eq = el("div", "equip");
       const LIMIT = 14;
@@ -534,6 +591,8 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
     if (s.ad_count != null) sm.append(el("span", null, group(s.ad_count) + " annonser"));
     info.append(sm);
     if (s.address) info.append(el("div", "meta", s.address));
+    const rt = ratingText(s);
+    if (rt) info.append(el("div", "meta rating num", rt));
     add(box, el("div", "avatar", name.trim().charAt(0).toUpperCase() || "?"), info);
     app.append(section("Säljare", box));
 
@@ -583,6 +642,14 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
     row("Plats", ads.map((a) => (a.place && a.place.city) || "–"));
     row("Säljare", ads.map((a) => (a.seller && a.seller.name) || (a.seller && a.seller.type === "dealer" ? "Företag" : "Privat")));
     if (ads.some((a) => a.favorites != null)) row("Sparad av", ads.map((a) => (a.favorites == null ? "–" : group(a.favorites))));
+    if (ads.some((a) => ratingText(a.seller))) {
+      const vals = ads.map((a) => ratingText(a.seller));
+      row("Säljarbetyg", vals, new Set(vals).size > 1 ? "diff" : "");
+    }
+    for (const [k, label, fmt] of VEHICLE_FIELDS) {
+      const vals = ads.map((a) => vehicleValue(a.vehicle, k, fmt));
+      if (vals.some((v) => v != null)) row(label, vals, new Set(vals).size > 1 ? "diff" : "");
+    }
     const labels = [];
     for (const a of ads) for (const k of Object.keys(a.specs || {})) if (!labels.includes(k)) labels.push(k);
     const shared = labels.filter((k) => ads.filter((a) => a.specs && a.specs[k] != null).length >= Math.min(2, ads.length));

@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import html from "./app.html";
 
 // Hosts cache templates by URI: bump the version whenever app.html changes.
-export const WIDGET_URI = "ui://blocket/widget-v2.html";
+export const WIDGET_URI = "ui://blocket/widget-v3.html";
 
 const IMAGE_ORIGIN = "https://images.blocketcdn.se";
 

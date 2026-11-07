@@ -34,7 +34,7 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   const derived = ad ? await comparablesFor(ad) : { params: { vertical: "torget" } as SearchParams, relax: [] };
 
   const relaxed: string[] = [];
-  let params = finalize({ ...derived.params, ...overrides });
+  let params = askingPriceParams({ ...derived.params, ...overrides });
   let query = await buildQuery(params);
   // A derived value Blocket doesn't know (e.g. a model spelled differently) is reported in the note and dropped,
   // the model before the make, instead of being left as an ignored filter.
@@ -45,7 +45,7 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
     const drop = miss.name === "make" && own.model ? "model" : miss.name;
     derived.params = { ...derived.params, filters: Object.fromEntries(Object.entries(own).filter(([name]) => name !== drop)) };
     relaxed.push(`no ${drop} filter (Blocket has no "${String(own[drop])}")`);
-    params = finalize({ ...derived.params, ...overrides });
+    params = askingPriceParams({ ...derived.params, ...overrides });
     query = await buildQuery(params);
   }
   let { total } = await fetchRows(query, { rows: 1, page: 1, sort: "price_asc" });
@@ -55,7 +55,7 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
     if (JSON.stringify(next) === JSON.stringify(derived.params)) continue;
     derived.params = next;
     relaxed.push(step.label);
-    params = finalize({ ...derived.params, ...overrides });
+    params = askingPriceParams({ ...derived.params, ...overrides });
     query = await buildQuery(params);
     ({ total } = await fetchRows(query, { rows: 1, page: 1, sort: "price_asc" }));
   }
@@ -87,12 +87,26 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   return { ...base, asking_price: { p10, p25, median, p75, p90 }, ad: adSummary, examples, note };
 }
 
-/** Price-check invariants: only real asking prices of items for sale. */
-function finalize(params: SearchParams): SearchParams {
+/** Price-check invariants: only real asking prices of items for sale (no giveaways, wanted ads, leasing or 0-1 kr). */
+export function askingPriceParams(params: SearchParams): SearchParams {
   const out: SearchParams = { ...params, price_min: Math.max(params.price_min ?? 0, MIN_PRICE) };
   if (out.vertical === "torget") out.trade = "sale";
   if (out.vertical === "car" && !out.filters?.sales_form) out.filters = { ...out.filters, sales_form: "Begagnad bil till salu" };
   return out;
+}
+
+/** Whether a row's price is a real asking price: not a giveaway, wanted ad, monthly leasing price or 0-1 kr placeholder. */
+export function isAskingPrice(row: Row): row is Row & { price: number } {
+  return (
+    row.price != null &&
+    row.price >= MIN_PRICE &&
+    !row.badges.some((b) => b === "giveaway" || b === "wanted" || b === "leasing")
+  );
+}
+
+/** Nearest-rank quantile (the same rank rule priceCheck uses) of ascending `sorted`, q in 0..1. */
+export function quantile(sorted: readonly number[], q: number): number {
+  return sorted[Math.min(sorted.length, Math.max(1, Math.ceil(q * sorted.length))) - 1]!;
 }
 
 type RankWindow = { rows: Row[]; index: number; target: Row };

@@ -9,9 +9,13 @@ It can't log in, message sellers or post anything. It reads public ads and that'
 
 ## Tools
 
-**search** knows all 13 sections: Torget plus cars, boats, motorcycles, caravans, motorhomes, trucks, tractors, combines, snowmobiles, ATVs, mopeds and buses. You write filters like a person would, `Volvo V70`, `Segelbåt`, `Stockholm`, and the server works out Blocket's ids. Typo in a make? It comes back under `unmatched` with suggestions and the model fixes it on the next call. Without that you'd quietly get every car in Sweden. There's radius search with distances, giveaways and wanted ads, items that ship, "what's new since this morning", one seller's whole stock, and value counts when you want a quick read on the market. Each search also returns its blocket.se URL. Save that in the Blocket app if you want push alerts.
+**search** knows all 13 sections: Torget plus cars, boats, motorcycles, caravans, motorhomes, trucks, tractors, combines, snowmobiles, ATVs, mopeds and buses. You write filters like a person would, `Volvo V70`, `Segelbåt`, `Stockholm`, and the server works out Blocket's ids. Typo in a make? It comes back under `unmatched` with suggestions and the model fixes it on the next call. Without that you'd quietly get every car in Sweden. There's radius search with distances, giveaways and wanted ads, items that ship, "what's new since this morning", one seller's whole stock, and value counts when you want a quick read on the market. Each search also returns its blocket.se URL. Save it in the Blocket app and you'll get pushes when new ads turn up.
 
-**get_ad** takes up to five ad ids or links. Description, specs, equipment, every photo, whether it's still for sale, who's selling and how many people saved it. It points out the usual scam signs too: pay outside Blocket, "write me on WhatsApp", a foreign number. Dealer cars come with links to their history. Give it several ads and you get a comparison.
+Blocket's own search throws in a lot of junk. Looking for an iPhone 13? Pass `exclude` with `skal`, `laddare` and `köpes`, and the cases, chargers and wanted ads are gone. There's `require` too, and a titles-only switch. When that leaves a page half empty the server keeps reading, but stops at 200 ads. The usual Blocket operators still do their thing: `-word`, `OR`, `"exact phrase"`, `word*`. Turn on `deals` and each result gets a label against the median price of the same search, from great to high. Titles with "defekt", "reservdelar", "startar inte" and the like get flagged either way.
+
+**get_ad** takes up to five ad ids or links. Description, specs, equipment, every photo, whether it's still for sale, who's selling and how many people saved it. It points out the usual scam signs too: pay outside Blocket, "write me on WhatsApp", a foreign number. Cars and boats get horsepower, EVs their range and battery size, and dealer cars the price without VAT when the dealer shows it. Dealers with a Google rating get that as well. Cars from dealers come with links to their history. Give it several ads and you get a comparison.
+
+**get_ad_photos** sends up to 8 photos of an ad as real images, so a model that can see judges the condition itself. Rust, cracks and missing parts show up there sooner than in the description.
 
 **price_check** is for "is this price fair?". It finds comparable live ads by make, model, year, mileage or boat length and gives you p10 to p90 plus where your ad lands. With fewer than 8 comparables it loosens the match and says what it dropped. The numbers are asking prices, since Blocket doesn't show what anything sold for.
 
@@ -21,7 +25,7 @@ It can't log in, message sellers or post anything. It reads public ads and that'
 
 Claude Desktop, Claude Code, Cursor and Codex can run the server locally over stdio. That needs no token and no hosting.
 
-For Claude Desktop, download `blocket-mcp-<version>.mcpb` from [Releases](https://github.com/idoo/blocket-mcp/releases) and double-click it.
+Claude Desktop users grab `blocket-mcp-<version>.mcpb` from [Releases](https://github.com/idoo/blocket-mcp/releases) and double-click it. That's the whole install.
 
 Other clients can start it with Docker. In Claude Code that looks like this:
 

@@ -143,6 +143,14 @@ function section(html: string, title: string, end: string): string | undefined {
 
 export type VehicleParsed = Omit<AdDetail, "red_flags" | "favorites" | "history_links" | "url"> & { regno?: string };
 
+/** "204 Hk", "75,5 kWh", "231 840 kr" → the number, when the value ends in `unit` (case-insensitive). */
+function unitNumber(value: string | undefined, unit: string): number | undefined {
+  const m = value?.replace(/[\s\u00a0]/g, "").match(new RegExp(`^(\\d+(?:[,.]\\d+)?)${unit}$`, "i"));
+  if (!m) return undefined;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export function parseVehicle(html: string, id: string): VehicleParsed {
   let product: Record<string, unknown> | undefined;
   for (const m of html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)) {
@@ -203,7 +211,13 @@ export function parseVehicle(html: string, id: string): VehicleParsed {
   const dealer = dealerIdx >= 0 || kv.owner_type?.[0] === "professional";
   const dealerBlock = dealerIdx >= 0 ? html.slice(dealerIdx, dealerIdx + 15_000) : "";
   const dealerName = dealerBlock.match(/<h3[^>]*>([\s\S]*?)<\/h3>/)?.[1] ?? html.match(/Säljs av<\/[^>]+>\s*(?:<[^>]+>\s*)*([^<]+)</)?.[1];
-  const memberSince = inline(html).match(/(\d+\+?\s*år på Blocket)/)?.[1];
+  const pageText = inline(html);
+  const memberSince = pageText.match(/(\d+\+?\s*år på Blocket)/)?.[1];
+  // Dealer star rating: "4,3" then stars then a Google Maps link "420 omdömen".
+  const ratingMatch = dealerBlock.match(/<span[^>]*>\s*(\d(?:,\d+)?)\s*<\/span>(?:(?!<\/h3>|<h2)[\s\S]){0,4000}?<a[^>]*href="https:\/\/www\.google\.[^"]*"[^>]*>\s*([\d\s\u00a0]+)\s*omdömen\s*<\/a>/);
+  const rating = ratingMatch
+    ? { score: Number(ratingMatch[1].replace(",", ".")), count: Number(ratingMatch[2].replace(/\D/g, "")), scale: 5, source: "google" as const }
+    : undefined;
   const adCount = html.match(/Visa handlarens\s+([\d\s\u00a0]+)\s+annonser/)?.[1].replace(/\D/g, "");
   const orgId = kv.org_id?.[0];
 
@@ -211,6 +225,16 @@ export function parseVehicle(html: string, id: string): VehicleParsed {
   const edited = updated ? swedishDate(decodeEntities(updated)) : undefined;
 
   const regno = specs.Registreringsnummer ?? specs.Regnummer ?? kv.regno?.[0];
+  const horsepower = unitNumber(specs.Effekt ?? specs.Motorstorlek, "hk");
+  const rangeKm = unitNumber(specs["Räckvidd (WLTP)"] ?? specs["Räckvidd"], "km");
+  const batteryKwh = unitNumber(specs.Batterikapacitet, "kWh");
+  const exVat = unitNumber(pageText.match(/\(([\d\s]+kr) exkl\. moms\)/)?.[1], "kr");
+  const vehicle = {
+    ...(horsepower != null ? { horsepower } : {}),
+    ...(rangeKm != null ? { range_km: rangeKm } : {}),
+    ...(batteryKwh != null ? { battery_kwh: batteryKwh } : {}),
+    ...(exVat != null ? { vat_deductible: true, price_excl_vat: exVat } : {}),
+  };
   const avail = offers.availability ?? "";
   return {
     id,
@@ -234,7 +258,9 @@ export function parseVehicle(html: string, id: string): VehicleParsed {
       ...(memberSince ? { member_since: memberSince } : {}),
       ...(adCount ? { ad_count: Number(adCount) } : {}),
       ...(dealer && placeText ? { address: placeText } : {}),
+      ...(dealer && rating && rating.score > 0 && rating.count > 0 ? { rating } : {}),
     },
+    ...(Object.keys(vehicle).length ? { vehicle } : {}),
     ...(regno ? { regno } : {}),
   };
 }

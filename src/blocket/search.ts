@@ -1,8 +1,11 @@
 // Search on blocket.se: typed params → Blocket query (with names resolved to ids), compact rows, facets and the matching web URL.
+// Optional extras computed here: relevance filtering (require/exclude/title_only) with capped auto-paging, deal annotations
+// against the asking prices of the same search, and risk words in titles.
 
-import type { AppliedFilter, Facet, Row, SearchResult, Sort, UnmatchedFilter, Vertical } from "../types";
+import type { AppliedFilter, Deal, DealBasis, Facet, Row, SearchResult, Sort, UnmatchedFilter, Vertical } from "../types";
 import { BlocketError, getJson, SITE } from "./http";
 import { type BlocketFilter, findFilter, flatten, getFilters, nodeLabel, parseFilters, resolveValue, suggest } from "./filters";
+import { askingPriceParams, isAskingPrice, quantile } from "./price";
 import { type Doc, VERTICAL_CONFIG } from "./verticals";
 
 export type SearchParams = {
@@ -27,7 +30,113 @@ export type SearchParams = {
   page?: number;
   rows?: number;
   facets?: boolean;
+  /** Words/phrases that must all appear in the row's title or specs. */
+  require?: string[];
+  /** Rows whose title, specs or trade type contain any of these are dropped. */
+  exclude?: string[];
+  /** Every word of `query` must appear in the title. */
+  title_only?: boolean;
+  /** Annotate rows with where their price sits among the same search's asking prices. */
+  deals?: boolean;
 };
+
+/** Title words that point at a broken, incomplete or unregistered item. Matched as whole words, case-insensitive. */
+export const RISK_WORDS = [
+  "defekt",
+  "defekta",
+  "trasig",
+  "trasigt",
+  "trasiga",
+  "fungerar inte",
+  "fungerar ej",
+  "reservdel",
+  "reservdelar",
+  "reservdelsbil",
+  "reservdelsobjekt",
+  "renoveringsobjekt",
+  "renoveringsprojekt",
+  "startar inte",
+  "startar ej",
+  "går inte igång",
+  "går ej igång",
+  "motorhaveri",
+  "motorras",
+  "säljes i delar",
+  "säljes som delar",
+  "i befintligt skick",
+  "befintligt skick",
+  "ej besiktigad",
+  "ej besiktad",
+  "obesiktigad",
+  "avställd",
+  "avställt",
+  "skadad",
+  "skadat",
+  "skadade",
+  "vattenskadad",
+  "vattenskadat",
+  "vattenskada",
+  "krockskadad",
+  "fuktskadad",
+] as const;
+
+const norm = (s: string) => s.normalize("NFC").toLocaleLowerCase("sv-SE");
+
+// Longest first so "i befintligt skick" wins over "befintligt skick"; letters/digits may not touch either end.
+const RISK_PATTERN = new RegExp(
+  `(?<![\\p{L}\\p{N}])(${[...RISK_WORDS]
+    .sort((a, b) => b.length - a.length)
+    .map((w) => w.replace(/ /g, "\\s+"))
+    .join("|")})(?![\\p{L}\\p{N}])`,
+  "gu",
+);
+
+/** Risk words in a title, normalized to their RISK_WORDS spelling. */
+export function riskWords(title: string): string[] {
+  return [...new Set([...norm(title).matchAll(RISK_PATTERN)].map((m) => m[1]!.replace(/\s+/g, " ")))];
+}
+
+/** How Blocket shows trade types, so exclude: ["köpes"] drops wanted ads even when the title doesn't say it. */
+const TRADE_TEXT: Record<string, string> = { giveaway: "bortskänkes", wanted: "köpes" };
+
+/**
+ * The words of a Blocket query that title_only checks, as groups of alternatives: `a OR b` is one group, "exact phrase"
+ * one word, `word*` a prefix (substring matching covers it). Excluded words (`-word`) are Blocket's job and skipped.
+ */
+function queryGroups(query: string): string[][] {
+  const groups: string[][] = [];
+  let or = false;
+  for (const m of query.matchAll(/(-)?(?:"([^"]*)"|(\S+))/g)) {
+    if (!m[1] && m[3] === "OR") {
+      or = groups.length > 0;
+      continue;
+    }
+    const word = norm((m[2] ?? m[3] ?? "").replace(/["*]/g, "").trim());
+    if (!m[1] && word) {
+      if (or) groups.at(-1)!.push(word);
+      else groups.push([word]);
+    }
+    or = false;
+  }
+  return groups;
+}
+
+/** The require/exclude/title_only test for a row, or undefined when none is set. Case-insensitive substring matching. */
+function relevanceFilter(p: SearchParams): ((row: Row) => boolean) | undefined {
+  const required = (p.require ?? []).map((w) => norm(w.trim())).filter(Boolean);
+  const excluded = (p.exclude ?? []).map((w) => norm(w.trim())).filter(Boolean);
+  const groups = p.title_only && p.query ? queryGroups(p.query) : [];
+  if (!required.length && !excluded.length && !groups.length) return undefined;
+  return (row) => {
+    const title = norm(row.title);
+    const text = [title, ...Object.values(row.specs).map((v) => norm(String(v))), ...row.badges.map((b) => TRADE_TEXT[b] ?? "")].join("\n");
+    return (
+      required.every((w) => text.includes(w)) &&
+      !excluded.some((w) => text.includes(w)) &&
+      groups.every((alternatives) => alternatives.some((w) => title.includes(w)))
+    );
+  };
+}
 
 export type BuiltQuery = {
   vertical: Vertical;
@@ -227,6 +336,8 @@ function toRow(vertical: Vertical, d: Doc, near: SearchParams["near"], now: numb
   }
   if (d.image?.path) row.image = `https://images.blocketcdn.se/dynamic/480w/${d.image.path}`;
   else if (d.image?.url) row.image = d.image.url;
+  const risks = riskWords(row.title);
+  if (risks.length) row.risk_words = risks;
   return row;
 }
 
@@ -238,13 +349,14 @@ type SearchJson = {
 export async function fetchRows(
   q: BuiltQuery,
   opts: { rows: number; page: number; sort?: Sort },
-): Promise<{ total: number; last_page: number; rows: Row[] }> {
+): Promise<{ total: number; last_page: number; rows: Row[]; scanned: number }> {
   const sort = q.since !== undefined ? "newest" : opts.sort;
   const params = new URLSearchParams(q.params);
   params.set("rows", String(opts.rows));
   params.set("page", String(opts.page));
   params.set("include_filters", "false");
-  const wanted = sort && sort !== "relevance" ? blocketSort(q.vertical, sort, !!q.near) : undefined;
+  // "deal" is Blocket's default order re-sorted locally.
+  const wanted = sort && sort !== "relevance" && sort !== "deal" ? blocketSort(q.vertical, sort, !!q.near) : undefined;
   if (wanted) params.set("sort", wanted);
   const json = (await getJson(`${q.path}?${params}`)) as SearchJson;
   // Blocket silently falls back to its default order for sorts a vertical lacks.
@@ -252,12 +364,79 @@ export async function fetchRows(
     throw new BlocketError(`Blocket does not sort ${q.vertical} by ${sort}`);
   }
   const now = Date.now();
-  let docs = json.docs ?? [];
-  if (q.since !== undefined) docs = docs.filter((d) => (d.timestamp ?? 0) >= (q.since ?? 0));
+  const all = json.docs ?? [];
+  const docs = q.since !== undefined ? all.filter((d) => (d.timestamp ?? 0) >= (q.since ?? 0)) : all;
   return {
     total: json.metadata?.result_size?.match_count ?? 0,
     last_page: json.metadata?.paging?.last ?? 1,
     rows: docs.map((d) => toRow(q.vertical, d, q.near, now)),
+    scanned: all.length,
+  };
+}
+
+/** Extra Blocket pages one search may read to refill rows dropped by require/exclude/title_only, and ads it may look at. */
+const MAX_EXTRA_PAGES = 4;
+const MAX_SCANNED = 200;
+
+type Scan = { total: number; last_page: number; rows: Row[]; scanned: number; dropped: number; next_page: number | null };
+
+/**
+ * Reads `page` and, while `keep` drops rows and fewer than `rows` matches are found, the following pages (capped).
+ * Matches of every page read are returned, so a filtered response can hold a few more than `rows` and no match is skipped.
+ */
+async function scanRows(q: BuiltQuery, opts: { rows: number; page: number; sort?: Sort }, keep?: (row: Row) => boolean): Promise<Scan> {
+  const out: Row[] = [];
+  let page = opts.page;
+  let scanned = 0;
+  let dropped = 0;
+  for (let extra = 0; ; extra++) {
+    const res = await fetchRows(q, { ...opts, page });
+    scanned += res.scanned;
+    for (const row of res.rows) {
+      if (!keep || keep(row)) out.push(row);
+      else dropped++;
+    }
+    // Under `since` (newest first) a page that lost rows to it has reached older ads: nothing new follows.
+    const more = page < Math.min(res.last_page, 50) && res.rows.length === res.scanned && res.scanned > 0;
+    const base = { total: res.total, last_page: res.last_page, rows: out, scanned, dropped };
+    if (!more) return { ...base, next_page: null };
+    if (!keep || out.length >= opts.rows || extra === MAX_EXTRA_PAGES || scanned + opts.rows > MAX_SCANNED) {
+      return { ...base, next_page: page + 1 };
+    }
+    page++;
+  }
+}
+
+type DealStats = { sorted: number[]; p10: number; p25: number; median: number; p75: number };
+
+/** With fewer usable asking prices than this, rows get no deal annotation. */
+const MIN_COMPARABLES = 8;
+
+/**
+ * Asking prices of the same search (every filter, no paging, no `since`) from one request of up to 200 ads, after the
+ * relevance filter and without giveaways, wanted ads, leasing and placeholders.
+ */
+async function dealStats(p: SearchParams, keep?: (row: Row) => boolean): Promise<{ basis: DealBasis; stats?: DealStats }> {
+  const { since: _since, page: _page, rows: _rows, sort: _sort, ...rest } = p;
+  const q = await buildQuery(askingPriceParams(rest));
+  const { rows } = await fetchRows(q, { rows: 200, page: 1 });
+  const sorted = rows
+    .filter((r) => (!keep || keep(r)) && isAskingPrice(r))
+    .map((r) => r.price as number)
+    .sort((a, b) => a - b);
+  if (sorted.length < MIN_COMPARABLES) {
+    return { basis: { comparables: sorted.length, median: null, note: "too few comparable ads" } };
+  }
+  const stats = { sorted, p10: quantile(sorted, 0.1), p25: quantile(sorted, 0.25), median: quantile(sorted, 0.5), p75: quantile(sorted, 0.75) };
+  return { basis: { comparables: sorted.length, median: stats.median, p25: stats.p25, p75: stats.p75 }, stats };
+}
+
+function dealFor(price: number, s: DealStats): Deal {
+  const below = s.sorted.filter((x) => x < price).length;
+  return {
+    percentile: Math.round((100 * below) / s.sorted.length),
+    vs_median_pct: Math.round((100 * (price - s.median)) / s.median),
+    label: price <= s.p10 ? "great" : price <= s.p25 ? "good" : price <= s.p75 ? "fair" : "high",
   };
 }
 
@@ -291,17 +470,33 @@ export async function search(p: SearchParams): Promise<SearchResult> {
   const page = Math.min(Math.max(p.page ?? 1, 1), 50);
   const rows = Math.min(Math.max(p.rows ?? 20, 1), 50);
   const sort = q.since !== undefined ? "newest" : p.sort;
-  const [result, facets] = await Promise.all([fetchRows(q, { rows, page, sort }), p.facets ? fetchFacets(q) : undefined]);
+  const keep = relevanceFilter(p);
+  const deals = p.deals || p.sort === "deal";
+  const [scan, facets, deal] = await Promise.all([
+    scanRows(q, { rows, page, sort }, keep),
+    p.facets ? fetchFacets(q) : undefined,
+    deals ? dealStats(p, keep) : undefined,
+  ]);
+  if (deal?.stats) {
+    for (const row of scan.rows) if (isAskingPrice(row)) row.deal = dealFor(row.price, deal.stats);
+  }
+  if (p.sort === "deal") {
+    scan.rows.sort((a, b) => (a.deal?.vs_median_pct ?? Infinity) - (b.deal?.vs_median_pct ?? Infinity));
+  }
   const webSort = sort && sort !== "relevance" ? VERTICAL_CONFIG[p.vertical].sorts[sort] : undefined;
   return {
     vertical: p.vertical,
-    total: result.total,
+    total: scan.total,
     page,
-    last_page: result.last_page,
-    rows: result.rows,
+    last_page: scan.last_page,
+    rows: scan.rows,
     applied: q.applied,
     unmatched: q.unmatched,
     ...(facets ? { facets } : {}),
     blocket_url: blocketUrl(VERTICAL_CONFIG[p.vertical].webPath, q.params, webSort),
+    scanned: scan.scanned,
+    dropped: scan.dropped,
+    next_page: scan.next_page,
+    ...(deal ? { deal_basis: deal.basis } : {}),
   };
 }
