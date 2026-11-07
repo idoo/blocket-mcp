@@ -1,7 +1,9 @@
 # Local stdio server: docker build -t blocket-mcp .
 #                     docker run -i --rm blocket-mcp
 # Published image:    ghcr.io/idoo/blocket-mcp (built by .github/workflows/release.yml).
-FROM node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS build
+# The bundle is plain JavaScript: build it once on the runner's own platform, so multi-arch
+# images don't run npm under QEMU.
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 # esbuild ships its binary as an optional dependency; no install scripts are needed.
