@@ -25,6 +25,8 @@ const EXAMPLES = 6;
 const ENOUGH = 8;
 /** 0 and 1 kr are placeholders ("ring för pris", "bud"), not asking prices. */
 const MIN_PRICE = 2;
+/** With new_price: asking prices under this share of it are taken for accessories or parts. */
+const ACCESSORY_SHARE = 0.1;
 
 const NOTE =
   "Asking prices of live Blocket ads, not sold prices. Giveaways, wanted ads, leasing and 0-1 kr placeholders are excluded.";
@@ -33,6 +35,10 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   const ad = p.ad_id ? await getAd(p.ad_id) : undefined;
   const { ad_id: _, new_price: newPrice, ...rest } = p;
   const overrides = stripUndefined(rest);
+  // Ads under 10% of the new price are accessories or parts, not the item: kept out of Blocket's results altogether.
+  const floor = newPrice ? Math.round(newPrice * ACCESSORY_SHARE) : 0;
+  const floored = floor > Math.max(overrides.price_min ?? 0, MIN_PRICE);
+  if (floored) overrides.price_min = floor;
   const derived = ad ? await comparablesFor(ad) : { params: { vertical: "torget" } as SearchParams, relax: [] };
 
   const relaxed: string[] = [];
@@ -63,7 +69,8 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   }
   const few = (n: number) => (n > 0 && n < ENOUGH ? ` Only ${n} comparable ad${n === 1 ? "" : "s"}: too few for a reliable price.` : "");
   const widened = relaxed.length ? ` Comparison widened: ${relaxed.join("; ")}.` : "";
-  const note = `${NOTE}${widened}`;
+  const accessories = floored ? ` Ads under 10% of the new price (${floor} kr) are left out as accessories or parts.` : "";
+  const note = `${NOTE}${widened}${accessories}`;
 
   const base = {
     vertical: query.vertical,
