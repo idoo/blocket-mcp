@@ -216,5 +216,10 @@ export type PriceCheck = {
   /** Up to 6 comparables around the median (or around the checked ad's price). */
   examples: Row[];
   blocket_url: string;
+  /** With require/exclude/title_only: ads read (newest first, at most 200) and how many of them were dropped. */
+  scanned?: number;
+  dropped?: number;
+  /** With new_price: integer % of the new price for the median asking price and the checked ad's price. */
+  vs_new?: { new_price: number; median_pct: number | null; ad_pct: number | null };
   note: string;
 };

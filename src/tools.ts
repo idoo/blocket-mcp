@@ -15,6 +15,7 @@ Relevance: query takes Blocket operators (-word, a OR b, "exact phrase", word*).
 Deals: deals (or sort "deal") labels rows great/good/fair/high against the median asking price of the same search (deal_basis). risk_words marks titles like defekt or reservdelar.
 Units: SEK, car/mc mileage in Swedish mil (1 mil = 10 km), boat length in feet. near takes coordinates you know for the place.
 price_check and deals report asking prices of live ads, never sold prices. red_flags and risk_words are facts to check, not verdicts.
+Used vs new: price_check with new_price (the lowest new price from a shop price comparison, e.g. Billigast) gives what share of the new price used ads ask.
 "What's new since…": search with since (ISO time). For push alerts, give the user blocket_url to save as a search in the Blocket app.
 Always link each ad's url. Keep at most 3 calls in parallel.`;
 
@@ -75,6 +76,22 @@ const filterParams = {
     ),
 };
 
+const relevanceParams = {
+  require: z
+    .array(z.string().min(1))
+    .max(10)
+    .optional()
+    .describe("Words or phrases that must all appear in the row's title or specs (case-insensitive), e.g. ['128gb']."),
+  exclude: z
+    .array(z.string().min(1))
+    .max(20)
+    .optional()
+    .describe(
+      "Drop rows whose title or specs contain any of these (case-insensitive, also inside words), e.g. ['skal', 'laddare', 'köpes'] for a phone. 'köpes' and 'bortskänkes' also drop wanted ads and giveaways.",
+    ),
+  title_only: z.boolean().optional().describe("Keep only rows whose title contains every word of query."),
+};
+
 function failure(error: unknown) {
   return {
     content: [{ type: "text" as const, text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
@@ -98,23 +115,11 @@ export function registerTools(server: McpServer) {
     {
       title: "Search Blocket",
       description:
-        "Search live Blocket ads in any vertical with filters, distance and sorting. Returns compact rows (price, place, age, seller, badges, key specs, url, photo, risk_words), the total count, the filters applied, unmatched filter values with suggestions, optional facets (value counts to refine with) and blocket_url (the same search on blocket.se). exclude/require/title_only drop off-topic rows and read up to 4 more pages to refill (scanned, dropped, next_page). deals labels each row's price against the same search's asking prices (deal_basis).",
+        "Search live Blocket ads in any vertical with filters, distance and sorting. Returns compact rows (price, place, age, seller, badges, key specs, url, photo, risk_words), the total count, the filters applied, unmatched filter values with suggestions, optional facets (value counts to refine with) and blocket_url (the same search on blocket.se). exclude/require/title_only drop off-topic rows and read up to 4 more pages to refill (scanned, dropped, next_page). deals labels each row's price against the same search's asking prices (deal_basis). Not for prices in shops (new products): use a price comparison tool such as Billigast.",
       inputSchema: {
         vertical: vertical.default("torget").describe(`Default torget. ${VERTICAL_TEXT}`),
         ...filterParams,
-        require: z
-          .array(z.string().min(1))
-          .max(10)
-          .optional()
-          .describe("Words or phrases that must all appear in the row's title or specs (case-insensitive), e.g. ['128gb']."),
-        exclude: z
-          .array(z.string().min(1))
-          .max(20)
-          .optional()
-          .describe(
-            "Drop rows whose title or specs contain any of these (case-insensitive, also inside words), e.g. ['skal', 'laddare', 'köpes'] for a phone. 'köpes' and 'bortskänkes' also drop wanted ads and giveaways.",
-          ),
-        title_only: z.boolean().optional().describe("Keep only rows whose title contains every word of query."),
+        ...relevanceParams,
         deals: z
           .boolean()
           .optional()
@@ -215,11 +220,17 @@ export function registerTools(server: McpServer) {
     {
       title: "Check a Blocket price",
       description:
-        "Asking-price distribution (p10/p25/median/p75/p90) of comparable live ads, with up to 6 example ads. Give ad_id to judge that ad (comparables are derived from its make, model, year, mileage or length; its percentile is returned), or describe the item with the search filters. For Torget items pass a short query (e.g. 'iphone 13 128gb') for good comparables. Explicit filters override the derived ones.",
+        "Use this when the user asks what a used item sells for on Blocket, whether an asking price is fair, or whether to buy used or new. Returns the asking-price distribution (p10/p25/median/p75/p90) of comparable live ads, with up to 6 example ads. Give ad_id to judge that ad (comparables are derived from its make, model, year, mileage or length; its percentile is returned), or describe the item with the search filters. For Torget items pass a short query (e.g. 'iphone 13 128gb') for good comparables; for mass-market products (phones, consoles, headphones) also pass title_only and excludes for accessories and wanted ads, e.g. ['skal', 'fodral', 'laddare', 'kontroll', 'köpes', 'bytes']. With require/exclude/title_only the stats come from those of the newest 200 ads that pass them (scanned, dropped). Pass new_price when a shop price comparison gave you one: vs_new says what % of it the median and the ad ask. Explicit filters override the derived ones.",
       inputSchema: {
         ad_id: z.string().min(1).optional().describe("Ad id or blocket.se URL to judge."),
         vertical: vertical.optional().describe(`Default torget, or the ad's vertical with ad_id. ${VERTICAL_TEXT}`),
         ...filterParams,
+        ...relevanceParams,
+        new_price: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Current lowest new price of the same model in Swedish shops (e.g. Billigast compare's cheapest.price), SEK incl. VAT."),
       },
       annotations: { title: "Check a Blocket price", ...READ_ONLY },
       _meta: WIDGET_TOOL_META,

@@ -122,7 +122,7 @@ function queryGroups(query: string): string[][] {
 }
 
 /** The require/exclude/title_only test for a row, or undefined when none is set. Case-insensitive substring matching. */
-function relevanceFilter(p: SearchParams): ((row: Row) => boolean) | undefined {
+export function relevanceFilter(p: Pick<SearchParams, "query" | "require" | "exclude" | "title_only">): ((row: Row) => boolean) | undefined {
   const required = (p.require ?? []).map((w) => norm(w.trim())).filter(Boolean);
   const excluded = (p.exclude ?? []).map((w) => norm(w.trim())).filter(Boolean);
   const groups = p.title_only && p.query ? queryGroups(p.query) : [];
@@ -376,7 +376,7 @@ export async function fetchRows(
 
 /** Extra Blocket pages one search may read to refill rows dropped by require/exclude/title_only, and ads it may look at. */
 const MAX_EXTRA_PAGES = 4;
-const MAX_SCANNED = 200;
+export const MAX_SCANNED = 200;
 
 type Scan = { total: number; last_page: number; rows: Row[]; scanned: number; dropped: number; next_page: number | null };
 
@@ -384,7 +384,7 @@ type Scan = { total: number; last_page: number; rows: Row[]; scanned: number; dr
  * Reads `page` and, while `keep` drops rows and fewer than `rows` matches are found, the following pages (capped).
  * Matches of every page read are returned, so a filtered response can hold a few more than `rows` and no match is skipped.
  */
-async function scanRows(q: BuiltQuery, opts: { rows: number; page: number; sort?: Sort }, keep?: (row: Row) => boolean): Promise<Scan> {
+export async function scanRows(q: BuiltQuery, opts: { rows: number; page: number; sort?: Sort }, keep?: (row: Row) => boolean): Promise<Scan> {
   const out: Row[] = [];
   let page = opts.page;
   let scanned = 0;

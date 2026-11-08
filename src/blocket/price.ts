@@ -1,13 +1,15 @@
 // Asking-price statistics for comparable live ads. Stateless: each percentile is one exact rank lookup under a price sort
 // (Blocket caps paging at page 50, so a rank r is read with rows = ceil(r/50); the upper half is read from the top).
+// With require/exclude/title_only the ranks can't be looked up (Blocket doesn't apply them), so the percentiles come from
+// the newest ads (at most 200) that pass them instead.
 
 import type { AdDetail, PriceCheck, Row } from "../types.js";
 import { getAd } from "./ad.js";
 import { findFilter, getFilters } from "./filters.js";
 import { BlocketError } from "./http.js";
-import { buildQuery, fetchRows, type BuiltQuery, type SearchParams } from "./search.js";
+import { buildQuery, fetchRows, MAX_SCANNED, relevanceFilter, scanRows, type BuiltQuery, type SearchParams } from "./search.js";
 
-export type PriceCheckParams = Partial<SearchParams> & { ad_id?: string };
+export type PriceCheckParams = Partial<SearchParams> & { ad_id?: string; new_price?: number };
 
 /** Largest rank reachable in one direction: 50 pages × 200 rows. */
 const MAX_RANK = 10_000;
@@ -29,7 +31,7 @@ const NOTE =
 
 export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   const ad = p.ad_id ? await getAd(p.ad_id) : undefined;
-  const { ad_id: _, ...rest } = p;
+  const { ad_id: _, new_price: newPrice, ...rest } = p;
   const overrides = stripUndefined(rest);
   const derived = ad ? await comparablesFor(ad) : { params: { vertical: "torget" } as SearchParams, relax: [] };
 
@@ -59,7 +61,9 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
     query = await buildQuery(params);
     ({ total } = await fetchRows(query, { rows: 1, page: 1, sort: "price_asc" }));
   }
-  const note = relaxed.length ? `${NOTE} Comparison widened: ${relaxed.join("; ")}.` : NOTE;
+  const few = (n: number) => (n > 0 && n < ENOUGH ? ` Only ${n} comparable ad${n === 1 ? "" : "s"}: too few for a reliable price.` : "");
+  const widened = relaxed.length ? ` Comparison widened: ${relaxed.join("; ")}.` : "";
+  const note = `${NOTE}${widened}`;
 
   const base = {
     vertical: query.vertical,
@@ -69,14 +73,57 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
     blocket_url: query.blocket_url,
   };
   const adSummary = ad ? { id: ad.id, title: ad.title, price: ad.price, percentile: null as number | null } : undefined;
+  const adPrice = ad?.price != null && ad.price >= MIN_PRICE ? ad.price : undefined;
+  // Share of the new price in whole percent, for the median asking price and the checked ad.
+  const vsNew = (median: number | null) =>
+    newPrice
+      ? {
+          vs_new: {
+            new_price: newPrice,
+            median_pct: median == null ? null : Math.round((100 * median) / newPrice),
+            ad_pct: adPrice == null ? null : Math.round((100 * adPrice) / newPrice),
+          },
+        }
+      : {};
+
+  const keep = relevanceFilter(params);
+  if (keep) {
+    const scan = await scanRows(query, { rows: MAX_SCANNED, page: 1, sort: "newest" }, (row) => keep(row) && isAskingPrice(row));
+    const kept = scan.rows.filter(isAskingPrice).sort((a, b) => a.price - b.price);
+    const prices = kept.map((row) => row.price);
+    const counts = { scanned: scan.scanned, dropped: scan.dropped };
+    const sample =
+      scan.total > scan.scanned
+        ? ` Stats rest on the newest ${scan.scanned} of ${scan.total} ads Blocket matched; ${prices.length} of them passed require/exclude/title_only.`
+        : "";
+    if (!prices.length) {
+      const why = "No comparable ads passed require/exclude/title_only; loosen them.";
+      return { ...base, comparables: 0, asking_price: null, ad: adSummary, examples: [], ...counts, ...vsNew(null), note: `${why}${sample} ${note}` };
+    }
+    const [p10, p25, median, p75, p90] = QUANTILES.map(([, q]) => quantile(prices, q)) as [number, number, number, number, number];
+    const below = adPrice == null ? undefined : prices.filter((x) => x < adPrice).length;
+    if (adSummary && below !== undefined) adSummary.percentile = Math.round((100 * below) / prices.length);
+    const index = Math.min(below ?? Math.ceil(prices.length / 2) - 1, kept.length - 1);
+    const examples = nearest({ rows: kept, index, target: kept[index]! }, ad?.id);
+    return {
+      ...base,
+      comparables: prices.length,
+      asking_price: { p10, p25, median, p75, p90 },
+      ad: adSummary,
+      examples,
+      ...counts,
+      ...vsNew(median),
+      note: `${note}${few(prices.length)}${sample}`,
+    };
+  }
 
   if (total === 0 || total > 2 * MAX_RANK) {
     const why = total === 0 ? "No comparable ads found; loosen the filters." : `Too broad (${total} ads); narrow the filters.`;
-    return { ...base, asking_price: null, ad: adSummary, examples: [], note: `${why} ${note}` };
+    return { ...base, asking_price: null, ad: adSummary, examples: [], ...vsNew(null), note: `${why} ${note}` };
   }
 
   const lookups = QUANTILES.map(([, q]) => readRank(query, total, Math.min(total, Math.max(1, Math.ceil(q * total)))));
-  const adRank = ad?.price != null && ad.price >= MIN_PRICE ? countBelow(params, ad.price).then((below) => below + 1) : undefined;
+  const adRank = adPrice !== undefined ? countBelow(params, adPrice).then((below) => below + 1) : undefined;
   const [prices, rankOfAd] = await Promise.all([Promise.all(lookups), adRank]);
   const [p10, p25, median, p75, p90] = prices.map((window) => window.target.price ?? 0) as [number, number, number, number, number];
 
@@ -84,7 +131,7 @@ export async function priceCheck(p: PriceCheckParams): Promise<PriceCheck> {
   const around = rankOfAd !== undefined ? await readRank(query, total, Math.min(total, rankOfAd)) : prices[2]!;
   const examples = nearest(around, ad?.id);
 
-  return { ...base, asking_price: { p10, p25, median, p75, p90 }, ad: adSummary, examples, note };
+  return { ...base, asking_price: { p10, p25, median, p75, p90 }, ad: adSummary, examples, ...vsNew(median), note: `${note}${few(total)}` };
 }
 
 /** Price-check invariants: only real asking prices of items for sale (no giveaways, wanted ads, leasing or 0-1 kr). */

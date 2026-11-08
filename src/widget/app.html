@@ -172,6 +172,7 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; margin-top: 2px; }
 .legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 .note { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.pc-new { font-size: 13px; margin-top: 10px; padding: 6px 10px; border-radius: 8px; background: var(--sunken); }
 .mini .card { flex-basis: 160px; }
 .mini .price { font-size: 14px; }
 .mini .title2 { font-size: 12px; }
@@ -741,6 +742,15 @@ table.cmp { border-collapse: collapse; width: 100%; font-size: 13px; table-layou
       const li = (color, text) => { const s = el("span"); const i = el("i"); i.style.background = color; add(s, i, document.createTextNode(text)); return s; };
       add(lg, li("var(--band-mid)", "Mittenhälften " + kr(ap.p25) + " – " + kr(ap.p75)), li("var(--band)", "80 % av annonserna " + kr(ap.p10) + " – " + kr(ap.p90)));
       app.append(lg);
+    }
+    const vn = data.vs_new;
+    if (vn && typeof vn.new_price === "number") {
+      const parts = [];
+      if (typeof vn.median_pct === "number") parts.push("medianen är " + vn.median_pct + " % av nypriset");
+      if (typeof vn.ad_pct === "number") parts.push("denna " + vn.ad_pct + " %");
+      const line = el("div", "pc-new");
+      add(line, document.createTextNode("Nypris i butik "), el("b", "num", kr(vn.new_price)), parts.length ? document.createTextNode(" · " + parts.join(" · ")) : null);
+      app.append(line);
     }
     if (data.note) app.append(el("div", "note", data.note));
     if (data.examples && data.examples.length) {
