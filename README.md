@@ -43,6 +43,8 @@ npm ci && npx wrangler deploy
 npx wrangler secret put MCP_PATH_TOKEN    # openssl rand -hex 24
 ```
 
+My own Worker redeploys on every push to main from my home server (air-ci, see `.air.yml`); the commands above, from a clean committed checkout, are the manual fallback.
+
 Paste `https://<your worker>.workers.dev/mcp/<token>` as the URL. The token is the only lock, so make it long. Other paths return 404, and `wrangler.jsonc` caps calls at 120 a minute. ChatGPT: Plugins, Add custom MCP server, no auth. claude.ai: Settings, Connectors.
 
 Firebase works as well if you're on the Blaze plan:
